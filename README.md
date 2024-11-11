@@ -1,2 +1,2 @@
 # Vulkan-Tutorial
-Learning repository for vulkan tutorial
+Learning repository for vulkan tutorial https://vulkan-tutorial.com

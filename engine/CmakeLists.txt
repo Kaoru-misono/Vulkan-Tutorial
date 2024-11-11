@@ -1,0 +1,40 @@
+set(ENGINE_ROOT_DIR "${PROJECT_ROOT_DIR}/engine")
+set(ENGINE_LIBRARY_DIR "${ENGINE_ROOT_DIR}/library")
+set(ENGINE_ASSET_DIR "/asset")
+
+set(DEPLOY_CONFIG_DIR "config/deployment")
+set(DEVELOP_CONFIG_DIR "config/development")
+
+if(CMAKE_CXX_COMPILER_ID STREQUAL "MSVC")
+    add_compile_options("/MP")
+    set_property(DIRECTORY ${CMAKE_SOURCE_DIR} PROPERTY VS_STARTUP_PROJECT Engine)
+endif()
+
+set(vulkan_include ${ENGINE_LIBRARY_DIR}/VulkanSDK/include)
+
+if(WIN32)
+    set(vulkan_lib ${ENGINE_LIBRARY_DIR}/VulkanSDK/lib/Win32/vulkan-1.lib)
+    set(glslangValidator_executable ${ENGINE_LIBRARY_DIR}/VulkanSDK/bin/Win32/glslangValidator.exe)
+    add_compile_definitions("ENGINE_VK_LAYER_PATH=${ENGINE_LIBRARY_DIR}/VulkanSDK/bin/Win32")
+elseif(UNIX)
+    if(APPLE)
+      set(vulkan_lib ${ENGINE_LIBRARY_DIR}/VulkanSDK/lib/MacOS/libvulkan.1.dylib)
+      set(glslangValidator_executable ${ENGINE_LIBRARY_DIR}/VulkanSDK/bin/MacOS/glslangValidator)
+      add_compile_definitions("ENGINE_VK_LAYER_PATH=${ENGINE_LIBRARY_DIR}/VulkanSDK/bin/MacOS")
+      add_compile_definitions("ENGINE_VK_ICD_FILENAMES=${ENGINE_LIBRARY_DIR}/VulkanSDK/bin/MacOS/MoltenVK_icd.json")
+    else()
+      set(vulkan_lib ${ENGINE_LIBRARY_DIR}/VulkanSDK/lib/Linux/libvulkan.so.1)
+      set(glslangValidator_executable ${ENGINE_LIBRARY_DIR}/VulkanSDK/bin/Linux/glslangValidator)
+      add_compile_definitions("ENGINE_VK_LAYER_PATH=${ENGINE_LIBRARY_DIR}/VulkanSDK/bin/Linux")
+    endif()
+else()
+  message(FATAL_ERROR "Unknown Platform")
+endif()
+
+
+set(SHADER_COMPILE_TARGET ShaderCompile)
+add_subdirectory(shader)
+
+add_subdirectory(library)
+
+add_subdirectory(source/runtime)

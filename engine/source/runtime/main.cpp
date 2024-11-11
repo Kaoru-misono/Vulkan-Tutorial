@@ -1,6 +1,7 @@
 #define GLFW_INCLUDE_VULKAN
 #include <GLFW/glfw3.h>
 
+#include <vector>
 #include <iostream>
 #include <stdexcept>
 #include <cstdlib>
@@ -20,6 +21,7 @@ struct Hello_Triangle_Application
 
 private:
     GLFWwindow* window{};
+    VkInstance instance{};
 
     auto init_window() -> void
     {
@@ -34,7 +36,7 @@ private:
 
     auto init_vulkan() -> void
     {
-
+        create_instance();
     }
 
     auto main_loop() -> void
@@ -46,9 +48,48 @@ private:
 
     auto clean_up() -> void
     {
+        vkDestroyInstance(instance, nullptr);
+
         glfwDestroyWindow(window);
 
         glfwTerminate();
+    }
+
+    auto create_instance() -> void
+    {
+        auto app_info = VkApplicationInfo{};
+        app_info.sType = VK_STRUCTURE_TYPE_APPLICATION_INFO;
+        app_info.pApplicationName = "Hello Triangle";
+        app_info.applicationVersion = VK_MAKE_VERSION(1, 0, 0);
+        app_info.pEngineName = "No Engine";
+        app_info.engineVersion = VK_MAKE_VERSION(1, 0, 0);
+        app_info.apiVersion = VK_API_VERSION_1_0;
+
+        auto glfw_extension_count = (uint32_t) 0;
+        auto glfw_extensions = glfwGetRequiredInstanceExtensions(&glfw_extension_count);
+
+        auto create_info = VkInstanceCreateInfo{};
+        create_info.sType = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO;
+        create_info.pApplicationInfo = &app_info;
+        create_info.enabledExtensionCount = glfw_extension_count;
+        create_info.ppEnabledExtensionNames = glfw_extensions;
+        create_info.enabledLayerCount = 0;
+
+        auto extension_count = (uint32_t) 0;
+        vkEnumerateInstanceExtensionProperties(nullptr, &extension_count, nullptr);
+        std::vector<VkExtensionProperties> extensions(extension_count);
+        vkEnumerateInstanceExtensionProperties(nullptr, &extension_count, extensions.data());
+
+        std::cout << "availiable extensions: \n";
+        for (const auto& extension: extensions) {
+            std::cout << '\t' << extension.extensionName << '\n';
+        }
+
+        auto result = vkCreateInstance(&create_info, nullptr, &instance);
+        if (result != VK_SUCCESS) {
+            throw std::runtime_error("failed to create vulkan instance");
+        }
+
     }
 };
 

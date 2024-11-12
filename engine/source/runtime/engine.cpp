@@ -1,6 +1,6 @@
 #include "engine.hpp"
 
-#include <optional>
+#include <set>
 
 inline namespace
 {
@@ -24,54 +24,6 @@ inline namespace
         if (func != nullptr) {
             func(instance, debugMessenger, pAllocator);
         }
-    }
-
-    struct Queue_Family_Indices
-    {
-        std::optional<uint32_t> graphics_family{};
-
-        auto complete() -> bool {
-            return graphics_family.has_value();
-        }
-    };
-
-    auto find_queue_families(VkPhysicalDevice device) -> Queue_Family_Indices
-    {
-        auto indices = Queue_Family_Indices{};
-
-        auto queue_family_count = (uint32_t) 0;
-        vkGetPhysicalDeviceQueueFamilyProperties(device, &queue_family_count, nullptr);
-
-        auto queue_families = std::vector<VkQueueFamilyProperties>{queue_family_count};
-        vkGetPhysicalDeviceQueueFamilyProperties(device, &queue_family_count, queue_families.data());
-
-        auto i = 0;
-        for (auto const& queue_family: queue_families) {
-            if (queue_family.queueFlags & VK_QUEUE_GRAPHICS_BIT) {
-                indices.graphics_family = i;
-            }
-
-            if (indices.complete()) {
-                break;
-            }
-
-            i++;
-        }
-
-        return indices;
-    }
-
-    auto is_device_suitable(VkPhysicalDevice device) -> bool
-    {
-        auto device_properties = VkPhysicalDeviceProperties{};
-        auto device_features = VkPhysicalDeviceFeatures{};
-        vkGetPhysicalDeviceProperties(device, &device_properties);
-        vkGetPhysicalDeviceFeatures(device, &device_features);
-        std::cout << device_properties.deviceName << std::endl;
-
-        auto indices = find_queue_families(device);
-
-        return indices.complete();
     }
 }
 
@@ -97,8 +49,13 @@ auto Hello_Triangle_Application::init_window() -> void
 auto Hello_Triangle_Application::init_vulkan() -> void
 {
     create_instance();
+
+    create_surface();
+
     setup_debug_messenger();
+
     pick_physical_device();
+
     create_logical_device();
 }
 
@@ -116,6 +73,8 @@ auto Hello_Triangle_Application::clean_up() -> void
     if (enable_validation_layers) {
         DestroyDebugUtilsMessengerEXT(instance, debug_messenger, nullptr);
     }
+
+    vkDestroySurfaceKHR(instance, surface, nullptr);
 
     vkDestroyInstance(instance, nullptr);
 
@@ -162,6 +121,14 @@ auto Hello_Triangle_Application::create_instance() -> void
     }
 }
 
+auto Hello_Triangle_Application::create_surface() -> void
+{
+    auto result = glfwCreateWindowSurface(instance, window, nullptr, &surface);
+    if (result != VK_SUCCESS) {
+        throw std::runtime_error("failed to create window surface!");
+    }
+}
+
 auto Hello_Triangle_Application::pick_physical_device() -> void
 {
     auto device_count = (uint32_t) 0;
@@ -190,18 +157,24 @@ auto Hello_Triangle_Application::create_logical_device() -> void
 {
     auto indices = find_queue_families(physical_device);
 
-    auto queue_create_info = VkDeviceQueueCreateInfo{};
-    queue_create_info.sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO;
-    queue_create_info.queueFamilyIndex = indices.graphics_family.value();
-    queue_create_info.queueCount = 1;
+    auto queue_create_infos = std::vector<VkDeviceQueueCreateInfo>{};
+    auto unique_queue_families = std::set<uint32_t>{indices.graphics_family.value(), indices.present_family.value()};
+
     auto queue_priority = 1.0f;
-    queue_create_info.pQueuePriorities = &queue_priority;
+    for (auto queue_family: unique_queue_families) {
+        auto queue_create_info = VkDeviceQueueCreateInfo{};
+        queue_create_info.sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO;
+        queue_create_info.queueFamilyIndex = indices.graphics_family.value();
+        queue_create_info.queueCount = 1;
+        queue_create_info.pQueuePriorities = &queue_priority;
+        queue_create_infos.emplace_back(std::move(queue_create_info));
+    }
 
     auto device_features = VkPhysicalDeviceFeatures{};
     auto create_info = VkDeviceCreateInfo{};
     create_info.sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO;
-    create_info.pQueueCreateInfos = &queue_create_info;
-    create_info.queueCreateInfoCount = 1;
+    create_info.queueCreateInfoCount = static_cast<uint32_t>(queue_create_infos.size());
+    create_info.pQueueCreateInfos = queue_create_infos.data();
     create_info.pEnabledFeatures = &device_features;
     create_info.enabledExtensionCount = 0;
     if (enable_validation_layers) {
@@ -217,6 +190,53 @@ auto Hello_Triangle_Application::create_logical_device() -> void
     }
 
     vkGetDeviceQueue(device, indices.graphics_family.value(), 0, &graphics_queue);
+    vkGetDeviceQueue(device, indices.present_family.value(), 0, &present_queue);
+}
+
+auto Hello_Triangle_Application::find_queue_families(VkPhysicalDevice device) -> Queue_Family_Indices
+{
+    auto indices = Queue_Family_Indices{};
+
+    auto queue_family_count = (uint32_t) 0;
+    vkGetPhysicalDeviceQueueFamilyProperties(device, &queue_family_count, nullptr);
+
+    auto queue_families = std::vector<VkQueueFamilyProperties>{queue_family_count};
+    vkGetPhysicalDeviceQueueFamilyProperties(device, &queue_family_count, queue_families.data());
+
+    auto i = 0;
+    for (auto const& queue_family: queue_families) {
+        if (queue_family.queueFlags & VK_QUEUE_GRAPHICS_BIT) {
+            indices.graphics_family = i;
+        }
+
+        auto present_support = (VkBool32) false;
+        vkGetPhysicalDeviceSurfaceSupportKHR(device, i, surface, &present_support);
+
+        if (present_support) {
+            indices.present_family = i;
+        }
+
+        if (indices.complete()) {
+            break;
+        }
+
+        i++;
+    }
+
+    return indices;
+}
+
+auto Hello_Triangle_Application::is_device_suitable(VkPhysicalDevice device) -> bool
+{
+    auto device_properties = VkPhysicalDeviceProperties{};
+    auto device_features = VkPhysicalDeviceFeatures{};
+    vkGetPhysicalDeviceProperties(device, &device_properties);
+    vkGetPhysicalDeviceFeatures(device, &device_features);
+    std::cout << device_properties.deviceName << std::endl;
+
+    auto indices = find_queue_families(device);
+
+    return indices.complete();
 }
 
 auto Hello_Triangle_Application::debug_callback(

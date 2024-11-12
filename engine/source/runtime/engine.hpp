@@ -20,6 +20,7 @@ struct Hello_Triangle_Application
 private:
     GLFWwindow* window{};
     VkInstance instance{};
+    VkPhysicalDevice physical_device{VK_NULL_HANDLE};
     VkDebugUtilsMessengerEXT debug_messenger{};
 
     auto init_window() -> void;
@@ -28,6 +29,7 @@ private:
     auto clean_up() -> void;
 
     auto create_instance() -> void;
+    auto pick_physical_device() -> void;
 
     static auto debug_callback(
         VkDebugUtilsMessageSeverityFlagBitsEXT message_severity,

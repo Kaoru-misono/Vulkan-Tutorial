@@ -1,5 +1,7 @@
 #include "engine.hpp"
 
+#include <optional>
+
 inline namespace
 {
 #ifdef NDEBUG
@@ -22,6 +24,54 @@ inline namespace
         if (func != nullptr) {
             func(instance, debugMessenger, pAllocator);
         }
+    }
+
+    struct Queue_Family_Indices
+    {
+        std::optional<uint32_t> graphics_family{};
+
+        auto complete() -> bool {
+            return graphics_family.has_value();
+        }
+    };
+
+    auto find_queue_families(VkPhysicalDevice device) -> Queue_Family_Indices
+    {
+        auto indices = Queue_Family_Indices{};
+
+        auto queue_family_count = (uint32_t) 0;
+        vkGetPhysicalDeviceQueueFamilyProperties(device, &queue_family_count, nullptr);
+
+        auto queue_families = std::vector<VkQueueFamilyProperties>{queue_family_count};
+        vkGetPhysicalDeviceQueueFamilyProperties(device, &queue_family_count, queue_families.data());
+
+        auto i = 0;
+        for (auto const& queue_family: queue_families) {
+            if (queue_family.queueFlags & VK_QUEUE_GRAPHICS_BIT) {
+                indices.graphics_family = i;
+            }
+
+            if (indices.complete()) {
+                break;
+            }
+
+            i++;
+        }
+
+        return indices;
+    }
+
+    auto is_device_suitable(VkPhysicalDevice device) -> bool
+    {
+        auto device_properties = VkPhysicalDeviceProperties{};
+        auto device_features = VkPhysicalDeviceFeatures{};
+        vkGetPhysicalDeviceProperties(device, &device_properties);
+        vkGetPhysicalDeviceFeatures(device, &device_features);
+        std::cout << device_properties.deviceName << std::endl;
+
+        auto indices = find_queue_families(device);
+
+        return indices.complete();
     }
 }
 
@@ -48,6 +98,7 @@ auto Hello_Triangle_Application::init_vulkan() -> void
 {
     create_instance();
     setup_debug_messenger();
+    pick_physical_device();
 }
 
 auto Hello_Triangle_Application::main_loop() -> void
@@ -102,11 +153,33 @@ auto Hello_Triangle_Application::create_instance() -> void
         create_info.pNext = nullptr;
     }
 
-    present_all_available_extensions();
-
     auto result = vkCreateInstance(&create_info, nullptr, &instance);
     if (result != VK_SUCCESS) {
         throw std::runtime_error("failed to create vulkan instance");
+    }
+}
+
+auto Hello_Triangle_Application::pick_physical_device() -> void
+{
+    auto device_count = (uint32_t) 0;
+    vkEnumeratePhysicalDevices(instance, &device_count, nullptr);
+
+    if (device_count == 0) {
+        throw std::runtime_error("failed to find GPUs with Vulkan support!");
+    }
+
+    auto devices = std::vector<VkPhysicalDevice>{device_count};
+    vkEnumeratePhysicalDevices(instance, &device_count, devices.data());
+
+    for (auto const& device: devices) {
+        if (is_device_suitable(device)) {
+            physical_device = device;
+            break;
+        }
+    }
+
+    if (physical_device == VK_NULL_HANDLE) {
+        throw std::runtime_error("failed to find a suitable GPU!");
     }
 }
 

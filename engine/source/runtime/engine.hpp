@@ -21,6 +21,8 @@ private:
     GLFWwindow* window{};
     VkInstance instance{};
     VkPhysicalDevice physical_device{VK_NULL_HANDLE};
+    VkDevice device{};
+    VkQueue graphics_queue{};
     VkDebugUtilsMessengerEXT debug_messenger{};
 
     auto init_window() -> void;
@@ -30,6 +32,7 @@ private:
 
     auto create_instance() -> void;
     auto pick_physical_device() -> void;
+    auto create_logical_device() -> void;
 
     static auto debug_callback(
         VkDebugUtilsMessageSeverityFlagBitsEXT message_severity,

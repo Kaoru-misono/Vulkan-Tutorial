@@ -99,6 +99,7 @@ auto Hello_Triangle_Application::init_vulkan() -> void
     create_instance();
     setup_debug_messenger();
     pick_physical_device();
+    create_logical_device();
 }
 
 auto Hello_Triangle_Application::main_loop() -> void
@@ -110,6 +111,8 @@ auto Hello_Triangle_Application::main_loop() -> void
 
 auto Hello_Triangle_Application::clean_up() -> void
 {
+    vkDestroyDevice(device, nullptr);
+
     if (enable_validation_layers) {
         DestroyDebugUtilsMessengerEXT(instance, debug_messenger, nullptr);
     }
@@ -181,6 +184,39 @@ auto Hello_Triangle_Application::pick_physical_device() -> void
     if (physical_device == VK_NULL_HANDLE) {
         throw std::runtime_error("failed to find a suitable GPU!");
     }
+}
+
+auto Hello_Triangle_Application::create_logical_device() -> void
+{
+    auto indices = find_queue_families(physical_device);
+
+    auto queue_create_info = VkDeviceQueueCreateInfo{};
+    queue_create_info.sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO;
+    queue_create_info.queueFamilyIndex = indices.graphics_family.value();
+    queue_create_info.queueCount = 1;
+    auto queue_priority = 1.0f;
+    queue_create_info.pQueuePriorities = &queue_priority;
+
+    auto device_features = VkPhysicalDeviceFeatures{};
+    auto create_info = VkDeviceCreateInfo{};
+    create_info.sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO;
+    create_info.pQueueCreateInfos = &queue_create_info;
+    create_info.queueCreateInfoCount = 1;
+    create_info.pEnabledFeatures = &device_features;
+    create_info.enabledExtensionCount = 0;
+    if (enable_validation_layers) {
+        create_info.enabledLayerCount = static_cast<uint32_t>(validation_layers.size());
+        create_info.ppEnabledLayerNames = validation_layers.data();
+    } else {
+        create_info.enabledLayerCount = 0;
+    }
+
+    auto result = vkCreateDevice(physical_device, &create_info, nullptr, &device);
+    if (result != VK_SUCCESS) {
+        throw std::runtime_error("failed to create logical device!");
+    }
+
+    vkGetDeviceQueue(device, indices.graphics_family.value(), 0, &graphics_queue);
 }
 
 auto Hello_Triangle_Application::debug_callback(

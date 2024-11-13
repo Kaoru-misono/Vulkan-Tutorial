@@ -1,6 +1,8 @@
 #include "engine.hpp"
 
 #include <set>
+#include <limits>
+#include <algorithm>
 
 inline namespace
 {
@@ -31,7 +33,9 @@ auto Hello_Triangle_Application::run() -> void
 {
     init_window();
     init_vulkan();
+
     main_loop();
+
     clean_up();
 }
 
@@ -57,6 +61,8 @@ auto Hello_Triangle_Application::init_vulkan() -> void
     pick_physical_device();
 
     create_logical_device();
+
+    create_swap_chain();
 }
 
 auto Hello_Triangle_Application::main_loop() -> void
@@ -68,7 +74,9 @@ auto Hello_Triangle_Application::main_loop() -> void
 
 auto Hello_Triangle_Application::clean_up() -> void
 {
-    vkDestroyDevice(device, nullptr);
+    vkDestroySwapchainKHR(logical_device, swap_chain, nullptr);
+
+    vkDestroyDevice(logical_device, nullptr);
 
     if (enable_validation_layers) {
         DestroyDebugUtilsMessengerEXT(instance, debug_messenger, nullptr);
@@ -176,7 +184,8 @@ auto Hello_Triangle_Application::create_logical_device() -> void
     create_info.queueCreateInfoCount = static_cast<uint32_t>(queue_create_infos.size());
     create_info.pQueueCreateInfos = queue_create_infos.data();
     create_info.pEnabledFeatures = &device_features;
-    create_info.enabledExtensionCount = 0;
+    create_info.enabledExtensionCount = static_cast<uint32_t>(device_extensions.size());
+    create_info.ppEnabledExtensionNames = device_extensions.data();
     if (enable_validation_layers) {
         create_info.enabledLayerCount = static_cast<uint32_t>(validation_layers.size());
         create_info.ppEnabledLayerNames = validation_layers.data();
@@ -184,13 +193,68 @@ auto Hello_Triangle_Application::create_logical_device() -> void
         create_info.enabledLayerCount = 0;
     }
 
-    auto result = vkCreateDevice(physical_device, &create_info, nullptr, &device);
+    auto result = vkCreateDevice(physical_device, &create_info, nullptr, &logical_device);
     if (result != VK_SUCCESS) {
         throw std::runtime_error("failed to create logical device!");
     }
 
-    vkGetDeviceQueue(device, indices.graphics_family.value(), 0, &graphics_queue);
-    vkGetDeviceQueue(device, indices.present_family.value(), 0, &present_queue);
+    vkGetDeviceQueue(logical_device, indices.graphics_family.value(), 0, &graphics_queue);
+    vkGetDeviceQueue(logical_device, indices.present_family.value(), 0, &present_queue);
+}
+
+auto Hello_Triangle_Application::create_swap_chain() -> void
+{
+    auto swap_chain_support = query_swap_chain_support(physical_device);
+
+    auto surface_format = choose_swap_surface_format(swap_chain_support.formats);
+    auto present_mode = choose_swap_present_mode(swap_chain_support.present_modes);
+    auto extent = choose_swap_extent(swap_chain_support.capabilities);
+
+    auto image_count = swap_chain_support.capabilities.minImageCount + 1;
+    if (swap_chain_support.capabilities.maxImageCount > 0 && image_count > swap_chain_support.capabilities.maxImageCount) {
+        image_count = swap_chain_support.capabilities.maxImageCount;
+    }
+
+    auto create_info = VkSwapchainCreateInfoKHR{};
+    create_info.sType = VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR;
+    create_info.surface = surface;
+    create_info.minImageCount = image_count;
+    create_info.imageFormat = surface_format.format;
+    create_info.imageColorSpace = surface_format.colorSpace;
+    create_info.imageExtent = extent;
+    create_info.imageArrayLayers = 1;
+    create_info.imageUsage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
+
+    auto indices = find_queue_families(physical_device);
+    uint32_t queue_family_indices[] = {indices.graphics_family.value(), indices.present_family.value()};
+
+    if (indices.graphics_family != indices.present_family) {
+        create_info.imageSharingMode = VK_SHARING_MODE_CONCURRENT;
+        create_info.queueFamilyIndexCount = 2;
+        create_info.pQueueFamilyIndices = queue_family_indices;
+    } else {
+        create_info.imageSharingMode = VK_SHARING_MODE_EXCLUSIVE;
+        create_info.queueFamilyIndexCount = 0;
+        create_info.pQueueFamilyIndices = nullptr;
+    }
+
+    create_info.preTransform = swap_chain_support.capabilities.currentTransform;
+    create_info.compositeAlpha = VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR;
+    create_info.presentMode = present_mode;
+    create_info.clipped = VK_TRUE;
+    create_info.oldSwapchain = VK_NULL_HANDLE;
+
+    auto result = vkCreateSwapchainKHR(logical_device, &create_info, nullptr, &swap_chain);
+    if (result != VK_SUCCESS) {
+        throw std::runtime_error("failed to create swap chain!");
+    }
+
+    vkGetSwapchainImagesKHR(logical_device, swap_chain, &image_count, nullptr);
+    swap_chain_images.resize(image_count);
+    vkGetSwapchainImagesKHR(logical_device, swap_chain, &image_count, swap_chain_images.data());
+
+    swap_chain_image_format = surface_format.format;
+    swap_chain_extent = extent;
 }
 
 auto Hello_Triangle_Application::find_queue_families(VkPhysicalDevice device) -> Queue_Family_Indices
@@ -226,6 +290,48 @@ auto Hello_Triangle_Application::find_queue_families(VkPhysicalDevice device) ->
     return indices;
 }
 
+auto Hello_Triangle_Application::check_device_extension_support(VkPhysicalDevice device) -> bool
+{
+    auto extension_count = (uint32_t) 0;
+    vkEnumerateDeviceExtensionProperties(device, nullptr, &extension_count, nullptr);
+
+    auto available_extensions = std::vector<VkExtensionProperties>{extension_count};
+    vkEnumerateDeviceExtensionProperties(device, nullptr, &extension_count, available_extensions.data());
+
+    auto required_extensions = std::set<std::string>{device_extensions.begin(), device_extensions.end()};
+
+    for (auto const& extension: available_extensions) {
+        required_extensions.erase(extension.extensionName);
+    }
+
+    return required_extensions.empty();
+}
+
+auto Hello_Triangle_Application::query_swap_chain_support(VkPhysicalDevice device) -> Swap_Chain_Support_Details
+{
+    auto details = Swap_Chain_Support_Details{};
+
+    vkGetPhysicalDeviceSurfaceCapabilitiesKHR(device, surface, &details.capabilities);
+
+    auto format_count = (uint32_t) 0;
+    vkGetPhysicalDeviceSurfaceFormatsKHR(device, surface, &format_count, nullptr);
+
+    if (format_count != 0) {
+        details.formats.resize(format_count);
+        vkGetPhysicalDeviceSurfaceFormatsKHR(device, surface, &format_count, details.formats.data());
+    }
+
+    auto present_mode_count = (uint32_t) 0;
+    vkGetPhysicalDeviceSurfacePresentModesKHR(device, surface, &present_mode_count, nullptr);
+
+    if (present_mode_count != 0) {
+        details.present_modes.resize(present_mode_count);
+        vkGetPhysicalDeviceSurfacePresentModesKHR(device, surface, &present_mode_count, details.present_modes.data());
+    }
+
+    return details;
+}
+
 auto Hello_Triangle_Application::is_device_suitable(VkPhysicalDevice device) -> bool
 {
     auto device_properties = VkPhysicalDeviceProperties{};
@@ -235,8 +341,55 @@ auto Hello_Triangle_Application::is_device_suitable(VkPhysicalDevice device) -> 
     std::cout << device_properties.deviceName << std::endl;
 
     auto indices = find_queue_families(device);
+    auto extension_supported = check_device_extension_support(device);
 
-    return indices.complete();
+    auto swap_chain_adequate = false;
+    if (extension_supported) {
+        auto swap_chain_support = query_swap_chain_support(device);
+        swap_chain_adequate = !swap_chain_support.formats.empty() && !swap_chain_support.present_modes.empty();
+    }
+
+    return indices.complete() && extension_supported && swap_chain_adequate;
+}
+
+auto Hello_Triangle_Application::choose_swap_surface_format(std::vector<VkSurfaceFormatKHR> const& available_formats) -> VkSurfaceFormatKHR
+{
+    for (auto const& available_format: available_formats) {
+        if (available_format.format == VK_FORMAT_B8G8R8A8_SRGB && available_format.colorSpace == VK_COLOR_SPACE_SRGB_NONLINEAR_KHR) {
+            return available_format;
+        }
+    }
+
+    return available_formats[0];
+}
+
+auto Hello_Triangle_Application::choose_swap_present_mode(std::vector<VkPresentModeKHR> const& available_present_modes) -> VkPresentModeKHR
+{
+    for (auto const& available_present_mode: available_present_modes) {
+        if (available_present_mode == VK_PRESENT_MODE_MAILBOX_KHR) {
+            return available_present_mode;
+        }
+    }
+
+    return VK_PRESENT_MODE_FIFO_KHR;
+}
+
+auto Hello_Triangle_Application::choose_swap_extent(VkSurfaceCapabilitiesKHR const& capabilities) -> VkExtent2D
+{
+    if (capabilities.currentExtent.width != std::numeric_limits<uint32_t>::max()) {
+        return capabilities.currentExtent;
+    }
+
+    auto width = 0;
+    auto height = 0;
+
+    glfwGetFramebufferSize(window, &width, &height);
+
+    VkExtent2D actual_extent = {static_cast<uint32_t>(width), static_cast<uint32_t>(height)};
+
+    actual_extent.width = std::clamp(actual_extent.width, capabilities.minImageExtent.width, capabilities.maxImageExtent.width);
+    actual_extent.height = std::clamp(actual_extent.height, capabilities.minImageExtent.height, capabilities.maxImageExtent.height);
+    return actual_extent;
 }
 
 auto Hello_Triangle_Application::debug_callback(

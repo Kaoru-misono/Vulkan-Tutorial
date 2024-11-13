@@ -62,6 +62,9 @@ private:
     auto create_logical_device() -> void;
     auto create_swap_chain() -> void;
     auto create_image_view() -> void;
+    auto create_graphics_pipeline() -> void;
+
+    auto create_shader_module(std::vector<unsigned char> const& code) -> VkShaderModule;
 
     auto find_queue_families(VkPhysicalDevice device) -> Queue_Family_Indices;
     auto check_device_extension_support(VkPhysicalDevice device) -> bool;

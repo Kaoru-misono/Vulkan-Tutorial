@@ -1,4 +1,6 @@
 #include "engine.hpp"
+#include "triangle_vert.h"
+#include "triangle_frag.h"
 
 #include <set>
 #include <limits>
@@ -286,6 +288,45 @@ auto Hello_Triangle_Application::create_image_view() -> void
             throw std::runtime_error("failed to create image views!");
         }
     }
+}
+
+auto Hello_Triangle_Application::create_graphics_pipeline() -> void
+{
+    auto vert_shader_module = create_shader_module(TRIANGLE_VERT);
+    auto frag_shader_module = create_shader_module(TRIANGLE_FRAG);
+
+    auto vert_shader_stage_info = VkPipelineShaderStageCreateInfo{};
+    vert_shader_stage_info.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
+    vert_shader_stage_info.stage = VK_SHADER_STAGE_VERTEX_BIT;
+    vert_shader_stage_info.module = vert_shader_module;
+    vert_shader_stage_info.pName = "main";
+
+    auto frag_shader_stage_info = VkPipelineShaderStageCreateInfo{};
+    frag_shader_stage_info.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
+    frag_shader_stage_info.stage = VK_SHADER_STAGE_FRAGMENT_BIT;
+    frag_shader_stage_info.module = frag_shader_module;
+    frag_shader_stage_info.pName = "main";
+
+    auto shader_stages = std::vector<VkPipelineShaderStageCreateInfo>{vert_shader_stage_info, frag_shader_stage_info};
+
+    vkDestroyShaderModule(logical_device, vert_shader_module, nullptr);
+    vkDestroyShaderModule(logical_device, frag_shader_module, nullptr);
+}
+
+auto Hello_Triangle_Application::create_shader_module(std::vector<unsigned char> const& code) -> VkShaderModule
+{
+    auto create_info = VkShaderModuleCreateInfo {};
+    create_info.sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO;
+    create_info.codeSize = code.size();
+    create_info.pCode = reinterpret_cast<const uint32_t*>(code.data());
+
+    auto shader_module = VkShaderModule{};
+    auto result = vkCreateShaderModule(logical_device, &create_info, nullptr, &shader_module);
+    if (result != VK_SUCCESS) {
+        throw std::runtime_error("failed to create shader module");
+    }
+
+    return shader_module;
 }
 
 auto Hello_Triangle_Application::find_queue_families(VkPhysicalDevice device) -> Queue_Family_Indices

@@ -74,6 +74,10 @@ auto Hello_Triangle_Application::main_loop() -> void
 
 auto Hello_Triangle_Application::clean_up() -> void
 {
+    for (auto image_view: swap_chain_image_views) {
+        vkDestroyImageView(logical_device, image_view, nullptr);
+    }
+
     vkDestroySwapchainKHR(logical_device, swap_chain, nullptr);
 
     vkDestroyDevice(logical_device, nullptr);
@@ -255,6 +259,33 @@ auto Hello_Triangle_Application::create_swap_chain() -> void
 
     swap_chain_image_format = surface_format.format;
     swap_chain_extent = extent;
+}
+
+auto Hello_Triangle_Application::create_image_view() -> void
+{
+    swap_chain_image_views.resize(swap_chain_images.size());
+
+    for (auto i = (size_t) 0; i < swap_chain_images.size(); i++) {
+        auto create_info = VkImageViewCreateInfo{};
+        create_info.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
+        create_info.image = swap_chain_images[i];
+        create_info.viewType = VK_IMAGE_VIEW_TYPE_2D;
+        create_info.format = swap_chain_image_format;
+        create_info.components.r = VK_COMPONENT_SWIZZLE_IDENTITY;
+        create_info.components.g = VK_COMPONENT_SWIZZLE_IDENTITY;
+        create_info.components.b = VK_COMPONENT_SWIZZLE_IDENTITY;
+        create_info.components.a = VK_COMPONENT_SWIZZLE_IDENTITY;
+        create_info.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+        create_info.subresourceRange.baseMipLevel = 0;
+        create_info.subresourceRange.levelCount = 1;
+        create_info.subresourceRange.baseArrayLayer = 0;
+        create_info.subresourceRange.layerCount = 1;
+
+        auto result = vkCreateImageView(logical_device, &create_info, nullptr, &swap_chain_image_views[i]);
+        if (result != VK_SUCCESS) {
+            throw std::runtime_error("failed to create image views!");
+        }
+    }
 }
 
 auto Hello_Triangle_Application::find_queue_families(VkPhysicalDevice device) -> Queue_Family_Indices

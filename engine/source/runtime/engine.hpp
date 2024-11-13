@@ -24,6 +24,7 @@ private:
     VkSurfaceKHR surface{};
     VkSwapchainKHR swap_chain{};
     std::vector<VkImage> swap_chain_images{};
+    std::vector<VkImageView> swap_chain_image_views{};
     VkFormat swap_chain_image_format{};
     VkExtent2D swap_chain_extent{};
     VkInstance instance{};
@@ -60,6 +61,7 @@ private:
     auto pick_physical_device() -> void;
     auto create_logical_device() -> void;
     auto create_swap_chain() -> void;
+    auto create_image_view() -> void;
 
     auto find_queue_families(VkPhysicalDevice device) -> Queue_Family_Indices;
     auto check_device_extension_support(VkPhysicalDevice device) -> bool;

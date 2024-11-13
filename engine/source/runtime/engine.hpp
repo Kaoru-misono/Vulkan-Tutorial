@@ -27,6 +27,8 @@ private:
     std::vector<VkImageView> swap_chain_image_views{};
     VkFormat swap_chain_image_format{};
     VkExtent2D swap_chain_extent{};
+    VkPipelineLayout pipeline_layout{};
+
     VkInstance instance{};
     VkPhysicalDevice physical_device{VK_NULL_HANDLE};
     VkDevice logical_device{};

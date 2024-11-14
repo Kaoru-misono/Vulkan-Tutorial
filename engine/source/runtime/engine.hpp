@@ -29,6 +29,7 @@ private:
     VkExtent2D swap_chain_extent{};
     VkRenderPass render_pass{};
     VkPipelineLayout pipeline_layout{};
+    VkPipeline graphics_pipeline{};
 
     VkInstance instance{};
     VkPhysicalDevice physical_device{VK_NULL_HANDLE};

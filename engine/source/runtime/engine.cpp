@@ -66,6 +66,8 @@ auto Hello_Triangle_Application::init_vulkan() -> void
 
     create_swap_chain();
 
+    create_image_view();
+
     create_render_pass();
 
     create_graphics_pipeline();
@@ -74,18 +76,29 @@ auto Hello_Triangle_Application::init_vulkan() -> void
 
     create_command_pool();
 
-    create_command_buffer();
+    create_command_buffers();
+
+    create_sync_objects();
 }
 
 auto Hello_Triangle_Application::main_loop() -> void
 {
     while(!glfwWindowShouldClose(window)) {
+        draw_frame();
         glfwPollEvents();
     }
+
+    vkDeviceWaitIdle(logical_device);
 }
 
 auto Hello_Triangle_Application::clean_up() -> void
 {
+    for (auto i = (size_t) 0; i < MAX_FRAMES_IN_FLIGHT; i++) {
+        vkDestroySemaphore(logical_device, image_available_semaphores[i], nullptr);
+        vkDestroySemaphore(logical_device, render_finished_semaphores[i], nullptr);
+        vkDestroyFence(logical_device, in_flight_fences[i], nullptr);
+    }
+
     vkDestroyCommandPool(logical_device, command_pool, nullptr);
 
     for (auto framebuffer: swap_chain_framebuffers) {
@@ -333,12 +346,22 @@ auto Hello_Triangle_Application::create_render_pass() -> void
     subpass.colorAttachmentCount =1;
     subpass.pColorAttachments = &color_attachment_ref;
 
+    auto subpass_dependency = VkSubpassDependency {};
+    subpass_dependency.srcSubpass = VK_SUBPASS_EXTERNAL;
+    subpass_dependency.dstSubpass = 0;
+    subpass_dependency.srcStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+    subpass_dependency.srcAccessMask = 0;
+    subpass_dependency.dstStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+    subpass_dependency.dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+
     auto render_pass_create_info = VkRenderPassCreateInfo{};
     render_pass_create_info.sType = VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO;
     render_pass_create_info.attachmentCount = 1;
     render_pass_create_info.pAttachments = &color_attachment;
     render_pass_create_info.subpassCount = 1;
     render_pass_create_info.pSubpasses = &subpass;
+    render_pass_create_info.dependencyCount = 1;
+    render_pass_create_info.pDependencies = &subpass_dependency;
 
     auto result = vkCreateRenderPass(logical_device, &render_pass_create_info, nullptr, &render_pass);
     if (result != VK_SUCCESS) {
@@ -522,19 +545,90 @@ auto Hello_Triangle_Application::create_command_pool() -> void
     }
 }
 
-
-auto Hello_Triangle_Application::create_command_buffer() -> void
+auto Hello_Triangle_Application::create_sync_objects() -> void
 {
+    image_available_semaphores.resize(MAX_FRAMES_IN_FLIGHT);
+    render_finished_semaphores.resize(MAX_FRAMES_IN_FLIGHT);
+    in_flight_fences.resize(MAX_FRAMES_IN_FLIGHT);
+
+    auto semaphore_create_info = VkSemaphoreCreateInfo{};
+    semaphore_create_info.sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO;
+
+    auto fence_create_info = VkFenceCreateInfo{};
+    fence_create_info.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
+    fence_create_info.flags = VK_FENCE_CREATE_SIGNALED_BIT;
+
+    for (auto i = (size_t) 0; i < MAX_FRAMES_IN_FLIGHT; i++) {
+        auto semaphore_result1 = vkCreateSemaphore(logical_device, &semaphore_create_info, nullptr, &image_available_semaphores[i]);
+        auto semaphore_result2 = vkCreateSemaphore(logical_device, &semaphore_create_info, nullptr, &render_finished_semaphores[i]);
+        auto fence_result = vkCreateFence(logical_device, &fence_create_info, nullptr, &in_flight_fences[i]);
+
+        if (semaphore_result1 != VK_SUCCESS || semaphore_result2 != VK_SUCCESS || fence_result != VK_SUCCESS) {
+            throw std::runtime_error("failed to create semaphores!");
+        }
+    }
+}
+
+auto Hello_Triangle_Application::create_command_buffers() -> void
+{
+    command_buffers.resize(MAX_FRAMES_IN_FLIGHT);
     auto allocate_info = VkCommandBufferAllocateInfo{};
     allocate_info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
     allocate_info.commandPool = command_pool;
     allocate_info.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
-    allocate_info.commandBufferCount = 1;
+    allocate_info.commandBufferCount = (uint32_t) command_buffers.size();
 
-    auto result = vkAllocateCommandBuffers(logical_device, &allocate_info, &command_buffer);
+    auto result = vkAllocateCommandBuffers(logical_device, &allocate_info, command_buffers.data());
     if (result != VK_SUCCESS) {
         throw std::runtime_error("failed to create command buffer!");
     }
+}
+
+auto Hello_Triangle_Application::draw_frame() -> void
+{
+    vkWaitForFences(logical_device, 1, &in_flight_fences[current_frame], VK_TRUE, UINT64_MAX);
+    vkResetFences(logical_device, 1, &in_flight_fences[current_frame]);
+
+    auto image_index = (uint32_t) 0;
+    vkAcquireNextImageKHR(logical_device, swap_chain, UINT64_MAX, image_available_semaphores[current_frame], VK_NULL_HANDLE, &image_index);
+
+    vkResetCommandBuffer(command_buffers[current_frame], 0);
+
+    record_command_buffer(command_buffers[current_frame], image_index);
+
+    auto submit_info = VkSubmitInfo{};
+    submit_info.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+    auto wait_semaphores = std::vector<VkSemaphore>{image_available_semaphores[current_frame]};
+    auto wait_stages = std::vector<VkPipelineStageFlags>{VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT};
+    submit_info.waitSemaphoreCount = 1;
+    submit_info.pWaitSemaphores = wait_semaphores.data();
+    submit_info.pWaitDstStageMask = wait_stages.data();
+    submit_info.commandBufferCount = 1;
+    submit_info.pCommandBuffers = &command_buffers[current_frame];
+
+    auto signal_semaphores = std::vector<VkSemaphore>{render_finished_semaphores[current_frame]};
+    submit_info.signalSemaphoreCount = 1;
+    submit_info.pSignalSemaphores = signal_semaphores.data();
+
+    auto result = vkQueueSubmit(graphics_queue, 1, &submit_info, in_flight_fences[current_frame]);
+    if (result != VK_SUCCESS) {
+        throw std::runtime_error("failed to submit queue!");
+    }
+
+    auto present_info = VkPresentInfoKHR{};
+    present_info.sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR;
+    present_info.waitSemaphoreCount = 1;
+    present_info.pWaitSemaphores = signal_semaphores.data();
+
+    auto swap_chains = std::vector<VkSwapchainKHR>{swap_chain};
+    present_info.swapchainCount = 1;
+    present_info.pSwapchains = swap_chains.data();
+    present_info.pImageIndices = &image_index;
+    present_info.pResults = nullptr;
+
+    vkQueuePresentKHR(present_queue, &present_info);
+
+    current_frame = (current_frame + 1) % MAX_FRAMES_IN_FLIGHT;
 }
 
 auto Hello_Triangle_Application::create_shader_module(std::vector<unsigned char> const& code) -> VkShaderModule

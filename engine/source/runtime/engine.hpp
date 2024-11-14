@@ -12,6 +12,8 @@
 const uint32_t WINTH = 800;
 const uint32_t HEIGHT = 600;
 
+const int MAX_FRAMES_IN_FLIGHT = 2;
+
 const std::vector<const char*> validation_layers = {"VK_LAYER_KHRONOS_validation"};
 const std::vector<const char*> device_extensions = {VK_KHR_SWAPCHAIN_EXTENSION_NAME};
 
@@ -32,7 +34,7 @@ private:
     VkPipelineLayout pipeline_layout{};
     VkPipeline graphics_pipeline{};
     VkCommandPool command_pool{};
-    VkCommandBuffer command_buffer{};
+    std::vector<VkCommandBuffer> command_buffers{};
 
     VkInstance instance{};
     VkPhysicalDevice physical_device{VK_NULL_HANDLE};
@@ -40,6 +42,11 @@ private:
     VkQueue graphics_queue{};
     VkQueue present_queue{};
     VkDebugUtilsMessengerEXT debug_messenger{};
+
+    std::vector<VkSemaphore> image_available_semaphores{};
+    std::vector<VkSemaphore> render_finished_semaphores{};
+    std::vector<VkFence> in_flight_fences{};
+    uint32_t current_frame{0};
 
     struct Queue_Family_Indices final
     {
@@ -73,7 +80,10 @@ private:
     auto create_graphics_pipeline() -> void;
     auto create_framebuffers() -> void;
     auto create_command_pool() -> void;
-    auto create_command_buffer() -> void;
+    auto create_command_buffers() -> void;
+    auto create_sync_objects() -> void;
+
+    auto draw_frame() -> void;
 
     auto create_shader_module(std::vector<unsigned char> const& code) -> VkShaderModule;
     auto record_command_buffer(VkCommandBuffer command_buffer, uint32_t image_index) -> void;

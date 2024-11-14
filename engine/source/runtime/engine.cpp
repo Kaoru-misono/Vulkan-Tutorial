@@ -66,6 +66,8 @@ auto Hello_Triangle_Application::init_vulkan() -> void
 
     create_swap_chain();
 
+    create_render_pass();
+
     create_graphics_pipeline();
 }
 
@@ -79,6 +81,8 @@ auto Hello_Triangle_Application::main_loop() -> void
 auto Hello_Triangle_Application::clean_up() -> void
 {
     vkDestroyPipelineLayout(logical_device, pipeline_layout, nullptr);
+
+    vkDestroyRenderPass(logical_device, render_pass, nullptr);
 
     for (auto image_view: swap_chain_image_views) {
         vkDestroyImageView(logical_device, image_view, nullptr);
@@ -291,6 +295,40 @@ auto Hello_Triangle_Application::create_image_view() -> void
         if (result != VK_SUCCESS) {
             throw std::runtime_error("failed to create image views!");
         }
+    }
+}
+
+auto Hello_Triangle_Application::create_render_pass() -> void
+{
+    auto color_attachment = VkAttachmentDescription{};
+    color_attachment.format = swap_chain_image_format;
+    color_attachment.samples = VK_SAMPLE_COUNT_1_BIT;
+    color_attachment.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
+    color_attachment.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
+    color_attachment.stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
+    color_attachment.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
+    color_attachment.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+    color_attachment.finalLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
+
+    auto color_attachment_ref = VkAttachmentReference{};
+    color_attachment_ref.attachment = 0;
+    color_attachment_ref.layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+
+    auto subpass = VkSubpassDescription{};
+    subpass.pipelineBindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS;
+    subpass.colorAttachmentCount =1;
+    subpass.pColorAttachments = &color_attachment_ref;
+
+    auto render_pass_create_info = VkRenderPassCreateInfo{};
+    render_pass_create_info.sType = VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO;
+    render_pass_create_info.attachmentCount = 1;
+    render_pass_create_info.pAttachments = &color_attachment;
+    render_pass_create_info.subpassCount = 1;
+    render_pass_create_info.pSubpasses = &subpass;
+
+    auto result = vkCreateRenderPass(logical_device, &render_pass_create_info, nullptr, &render_pass);
+    if (result != VK_SUCCESS) {
+        throw std::runtime_error("failed to create rnder pass!");
     }
 }
 

@@ -27,6 +27,7 @@ private:
     std::vector<VkImageView> swap_chain_image_views{};
     VkFormat swap_chain_image_format{};
     VkExtent2D swap_chain_extent{};
+    VkRenderPass render_pass{};
     VkPipelineLayout pipeline_layout{};
 
     VkInstance instance{};
@@ -64,6 +65,7 @@ private:
     auto create_logical_device() -> void;
     auto create_swap_chain() -> void;
     auto create_image_view() -> void;
+    auto create_render_pass() -> void;
     auto create_graphics_pipeline() -> void;
 
     auto create_shader_module(std::vector<unsigned char> const& code) -> VkShaderModule;

@@ -69,6 +69,8 @@ auto Hello_Triangle_Application::init_vulkan() -> void
     create_render_pass();
 
     create_graphics_pipeline();
+
+    create_framebuffers();
 }
 
 auto Hello_Triangle_Application::main_loop() -> void
@@ -80,6 +82,10 @@ auto Hello_Triangle_Application::main_loop() -> void
 
 auto Hello_Triangle_Application::clean_up() -> void
 {
+    for (auto framebuffer: swap_chain_framebuffers) {
+        vkDestroyFramebuffer(logical_device, framebuffer, nullptr);
+    }
+
     vkDestroyPipeline(logical_device, graphics_pipeline, nullptr);
 
     vkDestroyPipelineLayout(logical_device, pipeline_layout, nullptr);
@@ -470,6 +476,30 @@ auto Hello_Triangle_Application::create_graphics_pipeline() -> void
 
     vkDestroyShaderModule(logical_device, vert_shader_module, nullptr);
     vkDestroyShaderModule(logical_device, frag_shader_module, nullptr);
+}
+
+auto Hello_Triangle_Application::create_framebuffers() -> void
+{
+    swap_chain_framebuffers.resize(swap_chain_image_views.size());
+
+    for (auto i = (size_t) 0; i < swap_chain_image_views.size(); i++) {
+        auto attachments = std::vector<VkImageView>{swap_chain_image_views[i]};
+
+        auto framebuffer_create_info = VkFramebufferCreateInfo{};
+        framebuffer_create_info.sType = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO;
+        framebuffer_create_info.renderPass = render_pass;
+        framebuffer_create_info.attachmentCount = 1;
+        framebuffer_create_info.pAttachments = attachments.data();
+        framebuffer_create_info.width = swap_chain_extent.width;
+        framebuffer_create_info.height = swap_chain_extent.height;
+        framebuffer_create_info.layers = 1;
+
+        auto result = vkCreateFramebuffer(logical_device, &framebuffer_create_info, nullptr, &swap_chain_framebuffers[i]);
+        if (result != VK_SUCCESS) {
+            throw std::runtime_error("failed to create framebuffer!");
+        }
+
+    }
 }
 
 auto Hello_Triangle_Application::create_shader_module(std::vector<unsigned char> const& code) -> VkShaderModule

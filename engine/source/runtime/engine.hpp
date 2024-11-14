@@ -25,6 +25,7 @@ private:
     VkSwapchainKHR swap_chain{};
     std::vector<VkImage> swap_chain_images{};
     std::vector<VkImageView> swap_chain_image_views{};
+    std::vector<VkFramebuffer> swap_chain_framebuffers{};
     VkFormat swap_chain_image_format{};
     VkExtent2D swap_chain_extent{};
     VkRenderPass render_pass{};
@@ -68,6 +69,7 @@ private:
     auto create_image_view() -> void;
     auto create_render_pass() -> void;
     auto create_graphics_pipeline() -> void;
+    auto create_framebuffers() -> void;
 
     auto create_shader_module(std::vector<unsigned char> const& code) -> VkShaderModule;
 

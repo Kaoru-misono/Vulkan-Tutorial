@@ -71,6 +71,10 @@ auto Hello_Triangle_Application::init_vulkan() -> void
     create_graphics_pipeline();
 
     create_framebuffers();
+
+    create_command_pool();
+
+    create_command_buffer();
 }
 
 auto Hello_Triangle_Application::main_loop() -> void
@@ -82,6 +86,8 @@ auto Hello_Triangle_Application::main_loop() -> void
 
 auto Hello_Triangle_Application::clean_up() -> void
 {
+    vkDestroyCommandPool(logical_device, command_pool, nullptr);
+
     for (auto framebuffer: swap_chain_framebuffers) {
         vkDestroyFramebuffer(logical_device, framebuffer, nullptr);
     }
@@ -498,7 +504,36 @@ auto Hello_Triangle_Application::create_framebuffers() -> void
         if (result != VK_SUCCESS) {
             throw std::runtime_error("failed to create framebuffer!");
         }
+    }
+}
 
+auto Hello_Triangle_Application::create_command_pool() -> void
+{
+    auto queue_family_indices = find_queue_families(physical_device);
+
+    auto command_pool_create_info = VkCommandPoolCreateInfo{};
+    command_pool_create_info.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
+    command_pool_create_info.flags = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT;
+    command_pool_create_info.queueFamilyIndex = queue_family_indices.graphics_family.value();
+
+    auto result = vkCreateCommandPool(logical_device, &command_pool_create_info, nullptr, &command_pool);
+    if (result != VK_SUCCESS) {
+        throw std::runtime_error("failed to create command pool!");
+    }
+}
+
+
+auto Hello_Triangle_Application::create_command_buffer() -> void
+{
+    auto allocate_info = VkCommandBufferAllocateInfo{};
+    allocate_info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
+    allocate_info.commandPool = command_pool;
+    allocate_info.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
+    allocate_info.commandBufferCount = 1;
+
+    auto result = vkAllocateCommandBuffers(logical_device, &allocate_info, &command_buffer);
+    if (result != VK_SUCCESS) {
+        throw std::runtime_error("failed to create command buffer!");
     }
 }
 
@@ -516,6 +551,56 @@ auto Hello_Triangle_Application::create_shader_module(std::vector<unsigned char>
     }
 
     return shader_module;
+}
+
+auto Hello_Triangle_Application::record_command_buffer(VkCommandBuffer command_buffer, uint32_t image_index) -> void
+{
+    auto command_buffer_begin_info = VkCommandBufferBeginInfo{};
+    command_buffer_begin_info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+    command_buffer_begin_info.flags = 0;
+    command_buffer_begin_info.pInheritanceInfo = nullptr;
+
+    auto result = vkBeginCommandBuffer(command_buffer, &command_buffer_begin_info);
+    if (result != VK_SUCCESS) {
+        throw std::runtime_error("failed to begin recording command buffer");
+    }
+
+    auto render_pass_begin_info = VkRenderPassBeginInfo{};
+    render_pass_begin_info.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
+    render_pass_begin_info.renderPass = render_pass;
+    render_pass_begin_info.framebuffer = swap_chain_framebuffers[image_index];
+    render_pass_begin_info.renderArea.offset = {0, 0};
+    render_pass_begin_info.renderArea.extent = swap_chain_extent;
+    auto clear_color = VkClearValue{{{0.0f, 0.0f, 0.0f, 1.0f}}};
+    render_pass_begin_info.clearValueCount = 1;
+    render_pass_begin_info.pClearValues = &clear_color;
+
+    vkCmdBeginRenderPass(command_buffer, &render_pass_begin_info, VK_SUBPASS_CONTENTS_INLINE);
+
+    vkCmdBindPipeline(command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, graphics_pipeline);
+
+    auto viewport = VkViewport{};
+    viewport.x = 0.0f;
+    viewport.y = 0.0f;
+    viewport.width = static_cast<float>(swap_chain_extent.width);
+    viewport.height = static_cast<float>(swap_chain_extent.height);
+    viewport.minDepth = 0.0f;
+    viewport.maxDepth = 1.0f;
+    vkCmdSetViewport(command_buffer, 0, 1, &viewport);
+
+    auto scissor = VkRect2D{};
+    scissor.offset = {0, 0};
+    scissor.extent = swap_chain_extent;
+    vkCmdSetScissor(command_buffer, 0, 1, &scissor);
+
+    vkCmdDraw(command_buffer, 3, 1, 0, 0);
+
+    vkCmdEndRenderPass(command_buffer);
+
+    auto render_result = vkEndCommandBuffer(command_buffer);
+    if (render_result != VK_SUCCESS) {
+        throw std::runtime_error("failed to record command buffer");
+    }
 }
 
 auto Hello_Triangle_Application::find_queue_families(VkPhysicalDevice device) -> Queue_Family_Indices

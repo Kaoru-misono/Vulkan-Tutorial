@@ -31,6 +31,8 @@ private:
     VkRenderPass render_pass{};
     VkPipelineLayout pipeline_layout{};
     VkPipeline graphics_pipeline{};
+    VkCommandPool command_pool{};
+    VkCommandBuffer command_buffer{};
 
     VkInstance instance{};
     VkPhysicalDevice physical_device{VK_NULL_HANDLE};
@@ -70,8 +72,11 @@ private:
     auto create_render_pass() -> void;
     auto create_graphics_pipeline() -> void;
     auto create_framebuffers() -> void;
+    auto create_command_pool() -> void;
+    auto create_command_buffer() -> void;
 
     auto create_shader_module(std::vector<unsigned char> const& code) -> VkShaderModule;
+    auto record_command_buffer(VkCommandBuffer command_buffer, uint32_t image_index) -> void;
 
     auto find_queue_families(VkPhysicalDevice device) -> Queue_Family_Indices;
     auto check_device_extension_support(VkPhysicalDevice device) -> bool;

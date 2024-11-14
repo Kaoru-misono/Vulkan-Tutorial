@@ -47,6 +47,7 @@ private:
     std::vector<VkSemaphore> render_finished_semaphores{};
     std::vector<VkFence> in_flight_fences{};
     uint32_t current_frame{0};
+    bool frame_buffer_resized{false};
 
     struct Queue_Family_Indices final
     {
@@ -75,7 +76,7 @@ private:
     auto pick_physical_device() -> void;
     auto create_logical_device() -> void;
     auto create_swap_chain() -> void;
-    auto create_image_view() -> void;
+    auto create_image_views() -> void;
     auto create_render_pass() -> void;
     auto create_graphics_pipeline() -> void;
     auto create_framebuffers() -> void;
@@ -87,6 +88,9 @@ private:
 
     auto create_shader_module(std::vector<unsigned char> const& code) -> VkShaderModule;
     auto record_command_buffer(VkCommandBuffer command_buffer, uint32_t image_index) -> void;
+
+    auto cleanup_swap_chain() -> void;
+    auto recreate_swap_chain() -> void;
 
     auto find_queue_families(VkPhysicalDevice device) -> Queue_Family_Indices;
     auto check_device_extension_support(VkPhysicalDevice device) -> bool;
@@ -109,4 +113,6 @@ private:
     auto present_all_available_extensions() -> void;
     auto get_required_extensions() -> std::vector<const char*>;
     auto check_validation_layers_support() -> bool;
+
+    static auto frame_buffer_resized_callback(GLFWwindow* window, int width, int height) -> void;
 };

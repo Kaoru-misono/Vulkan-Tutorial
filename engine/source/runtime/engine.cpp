@@ -46,9 +46,11 @@ auto Hello_Triangle_Application::init_window() -> void
     glfwInit();
 
     glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
-    glfwWindowHint(GLFW_RESIZABLE, GLFW_FALSE);
+    //glfwWindowHint(GLFW_RESIZABLE, GLFW_TRUE);
 
     window = glfwCreateWindow(WINTH, HEIGHT, "Vulkan", nullptr, nullptr);
+    glfwSetWindowUserPointer(window, this);
+    glfwSetFramebufferSizeCallback(window, frame_buffer_resized_callback);
 
 }
 
@@ -66,7 +68,7 @@ auto Hello_Triangle_Application::init_vulkan() -> void
 
     create_swap_chain();
 
-    create_image_view();
+    create_image_views();
 
     create_render_pass();
 
@@ -283,6 +285,8 @@ auto Hello_Triangle_Application::create_swap_chain() -> void
     create_info.compositeAlpha = VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR;
     create_info.presentMode = present_mode;
     create_info.clipped = VK_TRUE;
+    // If you want to create a new swap chain while drawing commands on an image
+    // from the old swap chain are still in-flight, please set it
     create_info.oldSwapchain = VK_NULL_HANDLE;
 
     auto result = vkCreateSwapchainKHR(logical_device, &create_info, nullptr, &swap_chain);
@@ -298,7 +302,7 @@ auto Hello_Triangle_Application::create_swap_chain() -> void
     swap_chain_extent = extent;
 }
 
-auto Hello_Triangle_Application::create_image_view() -> void
+auto Hello_Triangle_Application::create_image_views() -> void
 {
     swap_chain_image_views.resize(swap_chain_images.size());
 
@@ -587,10 +591,18 @@ auto Hello_Triangle_Application::create_command_buffers() -> void
 auto Hello_Triangle_Application::draw_frame() -> void
 {
     vkWaitForFences(logical_device, 1, &in_flight_fences[current_frame], VK_TRUE, UINT64_MAX);
-    vkResetFences(logical_device, 1, &in_flight_fences[current_frame]);
 
     auto image_index = (uint32_t) 0;
-    vkAcquireNextImageKHR(logical_device, swap_chain, UINT64_MAX, image_available_semaphores[current_frame], VK_NULL_HANDLE, &image_index);
+    auto next_image_result = vkAcquireNextImageKHR(logical_device, swap_chain, UINT64_MAX, image_available_semaphores[current_frame], VK_NULL_HANDLE, &image_index);
+    if (next_image_result == VK_ERROR_OUT_OF_DATE_KHR) {
+        recreate_swap_chain();
+        return;
+    }
+    else if (next_image_result != VK_SUCCESS && next_image_result != VK_SUBOPTIMAL_KHR) {
+        throw std::runtime_error("failed to acquire swap chain image!");
+    }
+
+    vkResetFences(logical_device, 1, &in_flight_fences[current_frame]);
 
     vkResetCommandBuffer(command_buffers[current_frame], 0);
 
@@ -626,7 +638,14 @@ auto Hello_Triangle_Application::draw_frame() -> void
     present_info.pImageIndices = &image_index;
     present_info.pResults = nullptr;
 
-    vkQueuePresentKHR(present_queue, &present_info);
+    auto queue_present_result = vkQueuePresentKHR(present_queue, &present_info);
+    if (queue_present_result == VK_ERROR_OUT_OF_DATE_KHR || queue_present_result == VK_SUBOPTIMAL_KHR || frame_buffer_resized) {
+        frame_buffer_resized = false;
+        recreate_swap_chain();
+    }
+    else if (next_image_result != VK_SUCCESS) {
+        throw std::runtime_error("failed to present swap chain image!");
+    }
 
     current_frame = (current_frame + 1) % MAX_FRAMES_IN_FLIGHT;
 }
@@ -695,6 +714,37 @@ auto Hello_Triangle_Application::record_command_buffer(VkCommandBuffer command_b
     if (render_result != VK_SUCCESS) {
         throw std::runtime_error("failed to record command buffer");
     }
+}
+
+auto Hello_Triangle_Application::cleanup_swap_chain() -> void
+{
+    for (auto framebuffer: swap_chain_framebuffers) {
+        vkDestroyFramebuffer(logical_device, framebuffer, nullptr);
+    }
+
+    for (auto image_view: swap_chain_image_views) {
+        vkDestroyImageView(logical_device, image_view, nullptr);
+    }
+
+    vkDestroySwapchainKHR(logical_device, swap_chain, nullptr);
+}
+
+auto Hello_Triangle_Application::recreate_swap_chain() -> void
+{
+    int width = 0, height = 0;
+    glfwGetFramebufferSize(window, &width, &height);
+    while (width == 0 || height == 0) {
+        glfwGetFramebufferSize(window, &width, &height);
+        glfwWaitEvents();
+    }
+
+    vkDeviceWaitIdle(logical_device);
+
+    cleanup_swap_chain();
+
+    create_swap_chain();
+    create_image_views();
+    create_framebuffers();
 }
 
 auto Hello_Triangle_Application::find_queue_families(VkPhysicalDevice device) -> Queue_Family_Indices
@@ -832,6 +882,18 @@ auto Hello_Triangle_Application::choose_swap_extent(VkSurfaceCapabilitiesKHR con
     return actual_extent;
 }
 
+auto Hello_Triangle_Application::setup_debug_messenger() -> void
+{
+    if (!enable_validation_layers) return;
+
+    auto create_info = VkDebugUtilsMessengerCreateInfoEXT{};
+    populate_debug_messenger_create_info(&create_info);
+
+    if (CreateDebugUtilsMessengerEXT(instance, &create_info, nullptr, &debug_messenger) != VK_SUCCESS) {
+        throw std::runtime_error("failed to set up debug messenger!");
+    }
+}
+
 auto Hello_Triangle_Application::debug_callback(
     VkDebugUtilsMessageSeverityFlagBitsEXT message_severity,
     VkDebugUtilsMessageTypeFlagsEXT message_type,
@@ -901,14 +963,8 @@ auto Hello_Triangle_Application::populate_debug_messenger_create_info(VkDebugUti
     create_info->pfnUserCallback = debug_callback;
 }
 
-auto Hello_Triangle_Application::setup_debug_messenger() -> void
+auto Hello_Triangle_Application::frame_buffer_resized_callback(GLFWwindow* window, int width, int height) -> void
 {
-    if (!enable_validation_layers) return;
-
-    auto create_info = VkDebugUtilsMessengerCreateInfoEXT{};
-    populate_debug_messenger_create_info(&create_info);
-
-    if (CreateDebugUtilsMessengerEXT(instance, &create_info, nullptr, &debug_messenger) != VK_SUCCESS) {
-        throw std::runtime_error("failed to set up debug messenger!");
-    }
+    auto app = reinterpret_cast<Hello_Triangle_Application*>(glfwGetWindowUserPointer(window));
+    app->frame_buffer_resized = true;
 }

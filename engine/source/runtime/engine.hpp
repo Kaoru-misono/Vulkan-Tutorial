@@ -92,6 +92,8 @@ private:
 
     auto create_shader_module(std::vector<unsigned char> const& code) -> VkShaderModule;
     auto record_command_buffer(VkCommandBuffer command_buffer, uint32_t image_index) -> void;
+    auto create_buffer(VkDeviceSize size, VkBufferUsageFlags usage, VkMemoryPropertyFlags properties, VkBuffer* buffer, VkDeviceMemory* buffer_memory) -> void;
+    auto copy_buffer(VkBuffer src_buffer, VkBuffer dst_buffer, VkDeviceSize size) -> void;
 
     auto cleanup_swap_chain() -> void;
     auto recreate_swap_chain() -> void;

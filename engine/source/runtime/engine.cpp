@@ -624,33 +624,34 @@ auto Hello_Triangle_Application::create_sync_objects() -> void
 
 auto Hello_Triangle_Application::create_vertex_buffer() -> void
 {
-    auto buffer_create_info = VkBufferCreateInfo{};
-    buffer_create_info.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
-    buffer_create_info.size = sizeof(vertices[0]) * vertices.size();
-    buffer_create_info.usage = VK_BUFFER_USAGE_VERTEX_BUFFER_BIT;
-    buffer_create_info.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+    auto buffer_size = sizeof(vertices[0]) * vertices.size();
 
-    auto result = vkCreateBuffer(logical_device, &buffer_create_info, nullptr, &vertex_buffer);
-
-    auto memory_requirements = VkMemoryRequirements{};
-    vkGetBufferMemoryRequirements(logical_device, vertex_buffer, &memory_requirements);
-
-    auto memory_allocate_info = VkMemoryAllocateInfo{};
-    memory_allocate_info.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
-    memory_allocate_info.allocationSize = memory_requirements.size;
-    memory_allocate_info.memoryTypeIndex = find_memory_type(memory_requirements.memoryTypeBits, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
-
-    auto memory_allocate_result = vkAllocateMemory(logical_device, &memory_allocate_info, nullptr, &vertex_buffer_memory);
-    if (memory_allocate_result != VK_SUCCESS) {
-        throw std::runtime_error("failed to allocate vertex buffer memory!");
-    }
-
-    vkBindBufferMemory(logical_device, vertex_buffer, vertex_buffer_memory, 0);
+    auto staging_buffer = VkBuffer{};
+    auto staging_buffer_memory = VkDeviceMemory{};
+    create_buffer(
+        buffer_size,
+        VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
+        VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
+        &staging_buffer,
+        &staging_buffer_memory
+    );
 
     auto data = (void*) nullptr;
-    vkMapMemory(logical_device, vertex_buffer_memory, 0, buffer_create_info.size, 0, &data);
-    memcpy(data, vertices.data(), (size_t) buffer_create_info.size);
-    vkUnmapMemory(logical_device, vertex_buffer_memory);
+    vkMapMemory(logical_device, staging_buffer_memory, 0, buffer_size, 0, &data);
+    memcpy(data, vertices.data(), (size_t) buffer_size);
+    vkUnmapMemory(logical_device, staging_buffer_memory);
+
+    create_buffer(
+        buffer_size,
+        VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_VERTEX_BUFFER_BIT,
+        VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
+        &vertex_buffer,
+        &vertex_buffer_memory
+    );
+
+    copy_buffer(staging_buffer, vertex_buffer, buffer_size);
+    vkDestroyBuffer(logical_device, staging_buffer, nullptr);
+    vkFreeMemory(logical_device, staging_buffer_memory, nullptr);
 }
 
 auto Hello_Triangle_Application::create_command_buffers() -> void
@@ -798,6 +799,71 @@ auto Hello_Triangle_Application::record_command_buffer(VkCommandBuffer command_b
     if (render_result != VK_SUCCESS) {
         throw std::runtime_error("failed to record command buffer");
     }
+}
+
+auto Hello_Triangle_Application::create_buffer(VkDeviceSize size, VkBufferUsageFlags usage, VkMemoryPropertyFlags properties, VkBuffer* buffer, VkDeviceMemory* buffer_memory) -> void
+{
+    auto buffer_create_info = VkBufferCreateInfo{};
+    buffer_create_info.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
+    buffer_create_info.size = size;
+    buffer_create_info.usage = usage;
+    buffer_create_info.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+
+    auto result = vkCreateBuffer(logical_device, &buffer_create_info, nullptr, buffer);
+    if (result != VK_SUCCESS) {
+        throw std::runtime_error("failed to create a buffer!");
+    }
+
+    auto memory_requirements = VkMemoryRequirements{};
+    vkGetBufferMemoryRequirements(logical_device, *buffer, &memory_requirements);
+
+    auto memory_allocate_info = VkMemoryAllocateInfo{};
+    memory_allocate_info.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
+    memory_allocate_info.allocationSize = memory_requirements.size;
+    memory_allocate_info.memoryTypeIndex = find_memory_type(memory_requirements.memoryTypeBits, properties);
+
+    auto memory_allocate_result = vkAllocateMemory(logical_device, &memory_allocate_info, nullptr, buffer_memory);
+    if (memory_allocate_result != VK_SUCCESS) {
+        throw std::runtime_error("failed to allocate buffer memory!");
+    }
+
+    vkBindBufferMemory(logical_device, *buffer, *buffer_memory, 0);
+}
+
+auto Hello_Triangle_Application::copy_buffer(VkBuffer src_buffer, VkBuffer dst_buffer, VkDeviceSize size) -> void
+{
+    auto command_buffer_allocate_info = VkCommandBufferAllocateInfo{};
+    command_buffer_allocate_info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
+    command_buffer_allocate_info.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
+    command_buffer_allocate_info.commandPool = command_pool;
+    command_buffer_allocate_info.commandBufferCount = 1;
+
+    auto command_buffer = VkCommandBuffer{};
+    vkAllocateCommandBuffers(logical_device, &command_buffer_allocate_info, &command_buffer);
+
+    auto command_buffer_begin_info = VkCommandBufferBeginInfo{};
+    command_buffer_begin_info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+    command_buffer_begin_info.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
+
+    vkBeginCommandBuffer(command_buffer, &command_buffer_begin_info);
+
+    auto copy_region = VkBufferCopy{};
+    copy_region.srcOffset = 0;
+    copy_region.dstOffset = 0;
+    copy_region.size = size;
+    vkCmdCopyBuffer(command_buffer, src_buffer, dst_buffer, 1, &copy_region);
+
+    vkEndCommandBuffer(command_buffer);
+
+    auto submit_info = VkSubmitInfo{};
+    submit_info.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+    submit_info.commandBufferCount = 1;
+    submit_info.pCommandBuffers = &command_buffer;
+
+    vkQueueSubmit(graphics_queue, 1, &submit_info, VK_NULL_HANDLE);
+    vkQueueWaitIdle(graphics_queue);
+
+    vkFreeCommandBuffers(logical_device, command_pool, 1, &command_buffer);
 }
 
 auto Hello_Triangle_Application::cleanup_swap_chain() -> void

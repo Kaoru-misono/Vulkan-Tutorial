@@ -2,12 +2,15 @@
 #include "triangle_vert.h"
 #include "triangle_frag.h"
 
+#define GLM_FORCE_RADIANS
 #include <glm/glm.hpp>
+#include <glm/gtc/matrix_transform.hpp>
 
 #include <set>
 #include <limits>
 #include <algorithm>
 #include <array>
+#include <chrono>
 
 inline namespace
 {
@@ -75,6 +78,12 @@ inline namespace
         0, 1, 2, 2, 3, 0,
     };
 
+    struct Uniform_Buffer_Object
+    {
+        glm::mat4 model_matrix{};
+        glm::mat4 view_matrix{};
+        glm::mat4 projection_matrix{};
+    };
 }
 
 auto Hello_Triangle_Application::run() -> void
@@ -118,6 +127,8 @@ auto Hello_Triangle_Application::init_vulkan() -> void
 
     create_render_pass();
 
+    create_descriptor_set_layout();
+
     create_graphics_pipeline();
 
     create_framebuffers();
@@ -127,6 +138,8 @@ auto Hello_Triangle_Application::init_vulkan() -> void
     create_vertex_buffer();
 
     create_index_buffer();
+
+    create_uniform_buffers();
 
     create_command_buffers();
 
@@ -153,6 +166,11 @@ auto Hello_Triangle_Application::clean_up() -> void
 
     vkDestroyCommandPool(logical_device, command_pool, nullptr);
 
+    for (auto i = (size_t) 0; i < MAX_FRAMES_IN_FLIGHT; i++) {
+        vkDestroyBuffer(logical_device, uniform_buffers[i], nullptr);
+        vkFreeMemory(logical_device, uniform_buffers_memory[i], nullptr);
+    }
+
     vkFreeMemory(logical_device, index_buffer_memory, nullptr);
     vkDestroyBuffer(logical_device, index_buffer, nullptr);
 
@@ -166,6 +184,8 @@ auto Hello_Triangle_Application::clean_up() -> void
     vkDestroyPipeline(logical_device, graphics_pipeline, nullptr);
 
     vkDestroyPipelineLayout(logical_device, pipeline_layout, nullptr);
+
+    vkDestroyDescriptorSetLayout(logical_device, descriptor_set_layout, nullptr);
 
     vkDestroyRenderPass(logical_device, render_pass, nullptr);
 
@@ -429,6 +449,27 @@ auto Hello_Triangle_Application::create_render_pass() -> void
     }
 }
 
+auto Hello_Triangle_Application::create_descriptor_set_layout() -> void
+{
+    auto ubo_layout_binding = VkDescriptorSetLayoutBinding{};
+    ubo_layout_binding.binding = 0;
+    ubo_layout_binding.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+    ubo_layout_binding.descriptorCount = 1;
+    ubo_layout_binding.stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
+    ubo_layout_binding.pImmutableSamplers = nullptr;
+
+    auto descriptor_set_layout_create_info = VkDescriptorSetLayoutCreateInfo{};
+    descriptor_set_layout_create_info.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
+    descriptor_set_layout_create_info.bindingCount = 1;
+    descriptor_set_layout_create_info.pBindings = &ubo_layout_binding;
+
+    auto result = vkCreateDescriptorSetLayout(logical_device, &descriptor_set_layout_create_info, nullptr, &descriptor_set_layout);
+    if (result != VK_SUCCESS) {
+        throw std::runtime_error("failed to create descriptor set layout");
+    }
+
+}
+
 auto Hello_Triangle_Application::create_graphics_pipeline() -> void
 {
     auto vert_shader_module = create_shader_module(TRIANGLE_VERT);
@@ -533,8 +574,8 @@ auto Hello_Triangle_Application::create_graphics_pipeline() -> void
 
     auto pipeline_layout_create_info = VkPipelineLayoutCreateInfo{};
     pipeline_layout_create_info.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
-    pipeline_layout_create_info.setLayoutCount = 0;
-    pipeline_layout_create_info.pSetLayouts = nullptr;
+    pipeline_layout_create_info.setLayoutCount = 1;
+    pipeline_layout_create_info.pSetLayouts = &descriptor_set_layout;
     pipeline_layout_create_info.pushConstantRangeCount = 0;
     pipeline_layout_create_info.pPushConstantRanges = nullptr;
 
@@ -696,6 +737,26 @@ auto Hello_Triangle_Application::create_index_buffer() -> void
     vkFreeMemory(logical_device, staging_buffer_memory, nullptr);
 }
 
+auto Hello_Triangle_Application::create_uniform_buffers() -> void
+{
+    auto buffer_size = sizeof(Uniform_Buffer_Object);
+
+    uniform_buffers.resize(MAX_FRAMES_IN_FLIGHT);
+    uniform_buffers_memory.resize(MAX_FRAMES_IN_FLIGHT);
+    uniform_buffers_mapped.resize(MAX_FRAMES_IN_FLIGHT);
+
+    for (auto i = (size_t) 0; i < MAX_FRAMES_IN_FLIGHT; i++) {
+        create_buffer(
+            buffer_size,
+            VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,
+            VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
+            &uniform_buffers[i],
+            &uniform_buffers_memory[i]
+        );
+        vkMapMemory(logical_device, uniform_buffers_memory[i], 0, buffer_size, 0, &uniform_buffers_mapped[i]);
+    }
+}
+
 auto Hello_Triangle_Application::create_command_buffers() -> void
 {
     command_buffers.resize(MAX_FRAMES_IN_FLIGHT);
@@ -730,6 +791,8 @@ auto Hello_Triangle_Application::draw_frame() -> void
     vkResetCommandBuffer(command_buffers[current_frame], 0);
 
     record_command_buffer(command_buffers[current_frame], image_index);
+
+    update_uniform_buffer(current_frame);
 
     auto submit_info = VkSubmitInfo{};
     submit_info.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
@@ -908,6 +971,22 @@ auto Hello_Triangle_Application::copy_buffer(VkBuffer src_buffer, VkBuffer dst_b
     vkQueueWaitIdle(graphics_queue);
 
     vkFreeCommandBuffers(logical_device, command_pool, 1, &command_buffer);
+}
+
+auto Hello_Triangle_Application::update_uniform_buffer(uint32_t current_image) -> void
+{
+    static auto start_time = std::chrono::high_resolution_clock::now();
+
+    auto current_time = std::chrono::high_resolution_clock::now();
+    auto time = std::chrono::duration<float, std::chrono::seconds::period>(current_time - start_time).count();
+
+    auto ubo = Uniform_Buffer_Object{};
+    ubo.model_matrix = glm::rotate(glm::mat4(1.0f), time * glm::radians(90.0f), glm::vec3(0.0f, 0.0f, 1.0f));
+    ubo.view_matrix = glm::lookAt(glm::vec3(2.0f, 2.0f, 2.0f), glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(0.0f, 0.0f, 1.0f));
+    ubo.projection_matrix = glm::perspective(glm::radians(45.0f), swap_chain_extent.width / (float) swap_chain_extent.height, 0.1f, 10.0f);
+    ubo.projection_matrix[1][1] *= -1.0f;
+
+    memcpy(uniform_buffers_mapped[current_image], &ubo, sizeof(ubo));
 }
 
 auto Hello_Triangle_Application::cleanup_swap_chain() -> void

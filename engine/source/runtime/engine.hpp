@@ -31,6 +31,7 @@ private:
     VkFormat swap_chain_image_format{};
     VkExtent2D swap_chain_extent{};
     VkRenderPass render_pass{};
+    VkDescriptorSetLayout descriptor_set_layout{};
     VkPipelineLayout pipeline_layout{};
     VkPipeline graphics_pipeline{};
     VkCommandPool command_pool{};
@@ -40,6 +41,10 @@ private:
     VkDeviceMemory vertex_buffer_memory{};
     VkBuffer index_buffer{};
     VkDeviceMemory index_buffer_memory{};
+
+    std::vector<VkBuffer> uniform_buffers{};
+    std::vector<VkDeviceMemory> uniform_buffers_memory{};
+    std::vector<void*> uniform_buffers_mapped{};
 
     VkInstance instance{};
     VkPhysicalDevice physical_device{VK_NULL_HANDLE};
@@ -83,11 +88,13 @@ private:
     auto create_swap_chain() -> void;
     auto create_image_views() -> void;
     auto create_render_pass() -> void;
+    auto create_descriptor_set_layout() -> void;
     auto create_graphics_pipeline() -> void;
     auto create_framebuffers() -> void;
     auto create_command_pool() -> void;
     auto create_vertex_buffer() -> void;
     auto create_index_buffer() -> void;
+    auto create_uniform_buffers() -> void;
     auto create_command_buffers() -> void;
     auto create_sync_objects() -> void;
 
@@ -97,6 +104,7 @@ private:
     auto record_command_buffer(VkCommandBuffer command_buffer, uint32_t image_index) -> void;
     auto create_buffer(VkDeviceSize size, VkBufferUsageFlags usage, VkMemoryPropertyFlags properties, VkBuffer* buffer, VkDeviceMemory* buffer_memory) -> void;
     auto copy_buffer(VkBuffer src_buffer, VkBuffer dst_buffer, VkDeviceSize size) -> void;
+    auto update_uniform_buffer(uint32_t current_image) -> void;
 
     auto cleanup_swap_chain() -> void;
     auto recreate_swap_chain() -> void;

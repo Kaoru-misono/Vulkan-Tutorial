@@ -65,9 +65,14 @@ inline namespace
     };
 
     auto vertices = std::vector<Vertex>{
-        {{ 0.0f, -0.5f}, {1.0f, 0.0f, 0.0f}},
-        {{ 0.5f,  0.5f}, {0.0f, 1.0f, 0.0f}},
-        {{-0.5f,  0.5f}, {0.0f, 0.0f, 1.0f}},
+        {{-0.5f, -0.5f}, {1.0f, 0.0f, 0.0f}},
+        {{ 0.5f, -0.5f}, {0.0f, 1.0f, 0.0f}},
+        {{ 0.5f,  0.5f}, {0.0f, 0.0f, 1.0f}},
+        {{-0.5f,  0.5f}, {1.0f, 1.0f, 1.0f}},
+    };
+
+    auto indices = std::vector<uint16_t>{
+        0, 1, 2, 2, 3, 0,
     };
 
 }
@@ -121,6 +126,8 @@ auto Hello_Triangle_Application::init_vulkan() -> void
 
     create_vertex_buffer();
 
+    create_index_buffer();
+
     create_command_buffers();
 
     create_sync_objects();
@@ -145,6 +152,9 @@ auto Hello_Triangle_Application::clean_up() -> void
     }
 
     vkDestroyCommandPool(logical_device, command_pool, nullptr);
+
+    vkFreeMemory(logical_device, index_buffer_memory, nullptr);
+    vkDestroyBuffer(logical_device, index_buffer, nullptr);
 
     vkFreeMemory(logical_device, vertex_buffer_memory, nullptr);
     vkDestroyBuffer(logical_device, vertex_buffer, nullptr);
@@ -654,6 +664,38 @@ auto Hello_Triangle_Application::create_vertex_buffer() -> void
     vkFreeMemory(logical_device, staging_buffer_memory, nullptr);
 }
 
+auto Hello_Triangle_Application::create_index_buffer() -> void
+{
+    auto buffer_size = sizeof(indices[0]) * indices.size();
+
+    auto staging_buffer = VkBuffer{};
+    auto staging_buffer_memory = VkDeviceMemory{};
+    create_buffer(
+        buffer_size,
+        VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
+        VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
+        &staging_buffer,
+        &staging_buffer_memory
+    );
+
+    auto data = (void*) nullptr;
+    vkMapMemory(logical_device, staging_buffer_memory, 0, buffer_size, 0, &data);
+    memcpy(data, indices.data(), (size_t) buffer_size);
+    vkUnmapMemory(logical_device, staging_buffer_memory);
+
+    create_buffer(
+        buffer_size,
+        VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_INDEX_BUFFER_BIT,
+        VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
+        &index_buffer,
+        &index_buffer_memory
+    );
+
+    copy_buffer(staging_buffer, index_buffer, buffer_size);
+    vkDestroyBuffer(logical_device, staging_buffer, nullptr);
+    vkFreeMemory(logical_device, staging_buffer_memory, nullptr);
+}
+
 auto Hello_Triangle_Application::create_command_buffers() -> void
 {
     command_buffers.resize(MAX_FRAMES_IN_FLIGHT);
@@ -791,7 +833,9 @@ auto Hello_Triangle_Application::record_command_buffer(VkCommandBuffer command_b
     auto offsets = std::vector<VkDeviceSize>{0};
     vkCmdBindVertexBuffers(command_buffer, 0, 1, vertex_buffers.data(), offsets.data());
 
-    vkCmdDraw(command_buffer, static_cast<uint32_t>(vertices.size()), 1, 0, 0);
+    vkCmdBindIndexBuffer(command_buffer, index_buffer, 0, VK_INDEX_TYPE_UINT16);
+
+    vkCmdDrawIndexed(command_buffer, static_cast<uint32_t>(indices.size()), 1, 0, 0, 0);
 
     vkCmdEndRenderPass(command_buffer);
 

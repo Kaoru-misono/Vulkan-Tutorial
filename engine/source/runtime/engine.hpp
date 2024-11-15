@@ -38,6 +38,8 @@ private:
 
     VkBuffer vertex_buffer{};
     VkDeviceMemory vertex_buffer_memory{};
+    VkBuffer index_buffer{};
+    VkDeviceMemory index_buffer_memory{};
 
     VkInstance instance{};
     VkPhysicalDevice physical_device{VK_NULL_HANDLE};
@@ -85,6 +87,7 @@ private:
     auto create_framebuffers() -> void;
     auto create_command_pool() -> void;
     auto create_vertex_buffer() -> void;
+    auto create_index_buffer() -> void;
     auto create_command_buffers() -> void;
     auto create_sync_objects() -> void;
 

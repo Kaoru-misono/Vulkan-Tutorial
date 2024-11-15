@@ -36,6 +36,9 @@ private:
     VkCommandPool command_pool{};
     std::vector<VkCommandBuffer> command_buffers{};
 
+    VkBuffer vertex_buffer{};
+    VkDeviceMemory vertex_buffer_memory{};
+
     VkInstance instance{};
     VkPhysicalDevice physical_device{VK_NULL_HANDLE};
     VkDevice logical_device{};
@@ -81,6 +84,7 @@ private:
     auto create_graphics_pipeline() -> void;
     auto create_framebuffers() -> void;
     auto create_command_pool() -> void;
+    auto create_vertex_buffer() -> void;
     auto create_command_buffers() -> void;
     auto create_sync_objects() -> void;
 
@@ -96,6 +100,7 @@ private:
     auto check_device_extension_support(VkPhysicalDevice device) -> bool;
     auto query_swap_chain_support(VkPhysicalDevice device) -> Swap_Chain_Support_Details;
     auto is_device_suitable(VkPhysicalDevice device) -> bool;
+    auto find_memory_type(uint32_t type_filter, VkMemoryPropertyFlags properties) -> uint32_t;
 
     auto choose_swap_surface_format(std::vector<VkSurfaceFormatKHR> const& available_formats) -> VkSurfaceFormatKHR;
     auto choose_swap_present_mode(std::vector<VkPresentModeKHR> const& available_present_modes) -> VkPresentModeKHR;

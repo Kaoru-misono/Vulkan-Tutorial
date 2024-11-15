@@ -2,9 +2,12 @@
 #include "triangle_vert.h"
 #include "triangle_frag.h"
 
+#include <glm/glm.hpp>
+
 #include <set>
 #include <limits>
 #include <algorithm>
+#include <array>
 
 inline namespace
 {
@@ -29,6 +32,44 @@ inline namespace
             func(instance, debugMessenger, pAllocator);
         }
     }
+
+    struct Vertex final
+    {
+        glm::vec2 position{};
+        glm::vec3 color{};
+
+        static auto get_binding_description() -> VkVertexInputBindingDescription
+        {
+            auto binding_description = VkVertexInputBindingDescription{};
+            binding_description.binding = 0;
+            binding_description.stride = sizeof(Vertex);
+            binding_description.inputRate = VK_VERTEX_INPUT_RATE_VERTEX;
+
+            return binding_description;
+        }
+
+        static auto get_attribute_descriptions() -> std::array<VkVertexInputAttributeDescription, 2>
+        {
+            auto attribute_descriptions = std::array<VkVertexInputAttributeDescription, 2>{};
+            attribute_descriptions[0].binding = 0;
+            attribute_descriptions[0].location = 0;
+            attribute_descriptions[0].format = VK_FORMAT_R32G32_SFLOAT;
+            attribute_descriptions[0].offset = offsetof(Vertex, position);
+            attribute_descriptions[1].binding = 0;
+            attribute_descriptions[1].location = 1;
+            attribute_descriptions[1].format = VK_FORMAT_R32G32B32_SFLOAT;
+            attribute_descriptions[1].offset = offsetof(Vertex, color);
+
+            return attribute_descriptions;
+        }
+    };
+
+    auto vertices = std::vector<Vertex>{
+        {{ 0.0f, -0.5f}, {1.0f, 0.0f, 0.0f}},
+        {{ 0.5f,  0.5f}, {0.0f, 1.0f, 0.0f}},
+        {{-0.5f,  0.5f}, {0.0f, 0.0f, 1.0f}},
+    };
+
 }
 
 auto Hello_Triangle_Application::run() -> void
@@ -78,6 +119,8 @@ auto Hello_Triangle_Application::init_vulkan() -> void
 
     create_command_pool();
 
+    create_vertex_buffer();
+
     create_command_buffers();
 
     create_sync_objects();
@@ -102,6 +145,9 @@ auto Hello_Triangle_Application::clean_up() -> void
     }
 
     vkDestroyCommandPool(logical_device, command_pool, nullptr);
+
+    vkFreeMemory(logical_device, vertex_buffer_memory, nullptr);
+    vkDestroyBuffer(logical_device, vertex_buffer, nullptr);
 
     for (auto framebuffer: swap_chain_framebuffers) {
         vkDestroyFramebuffer(logical_device, framebuffer, nullptr);
@@ -417,12 +463,15 @@ auto Hello_Triangle_Application::create_graphics_pipeline() -> void
     viewport_state_create_info.scissorCount = 1;
     viewport_state_create_info.pScissors = &scissor;
 
+    auto binding_description = Vertex::get_binding_description();
+    auto attribute_descriptions = Vertex::get_attribute_descriptions();
+
     auto vertex_input_info = VkPipelineVertexInputStateCreateInfo{};
     vertex_input_info.sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO;
-    vertex_input_info.vertexBindingDescriptionCount = 0;
-    vertex_input_info.pVertexBindingDescriptions = nullptr;
-    vertex_input_info.vertexAttributeDescriptionCount = 0;
-    vertex_input_info.pVertexAttributeDescriptions = nullptr;
+    vertex_input_info.vertexBindingDescriptionCount = 1;
+    vertex_input_info.pVertexBindingDescriptions = &binding_description;
+    vertex_input_info.vertexAttributeDescriptionCount = static_cast<uint32_t>(attribute_descriptions.size());
+    vertex_input_info.pVertexAttributeDescriptions = attribute_descriptions.data();
 
     auto input_assembly = VkPipelineInputAssemblyStateCreateInfo{};
     input_assembly.sType = VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO;
@@ -573,6 +622,37 @@ auto Hello_Triangle_Application::create_sync_objects() -> void
     }
 }
 
+auto Hello_Triangle_Application::create_vertex_buffer() -> void
+{
+    auto buffer_create_info = VkBufferCreateInfo{};
+    buffer_create_info.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
+    buffer_create_info.size = sizeof(vertices[0]) * vertices.size();
+    buffer_create_info.usage = VK_BUFFER_USAGE_VERTEX_BUFFER_BIT;
+    buffer_create_info.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+
+    auto result = vkCreateBuffer(logical_device, &buffer_create_info, nullptr, &vertex_buffer);
+
+    auto memory_requirements = VkMemoryRequirements{};
+    vkGetBufferMemoryRequirements(logical_device, vertex_buffer, &memory_requirements);
+
+    auto memory_allocate_info = VkMemoryAllocateInfo{};
+    memory_allocate_info.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
+    memory_allocate_info.allocationSize = memory_requirements.size;
+    memory_allocate_info.memoryTypeIndex = find_memory_type(memory_requirements.memoryTypeBits, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
+
+    auto memory_allocate_result = vkAllocateMemory(logical_device, &memory_allocate_info, nullptr, &vertex_buffer_memory);
+    if (memory_allocate_result != VK_SUCCESS) {
+        throw std::runtime_error("failed to allocate vertex buffer memory!");
+    }
+
+    vkBindBufferMemory(logical_device, vertex_buffer, vertex_buffer_memory, 0);
+
+    auto data = (void*) nullptr;
+    vkMapMemory(logical_device, vertex_buffer_memory, 0, buffer_create_info.size, 0, &data);
+    memcpy(data, vertices.data(), (size_t) buffer_create_info.size);
+    vkUnmapMemory(logical_device, vertex_buffer_memory);
+}
+
 auto Hello_Triangle_Application::create_command_buffers() -> void
 {
     command_buffers.resize(MAX_FRAMES_IN_FLIGHT);
@@ -706,7 +786,11 @@ auto Hello_Triangle_Application::record_command_buffer(VkCommandBuffer command_b
     scissor.extent = swap_chain_extent;
     vkCmdSetScissor(command_buffer, 0, 1, &scissor);
 
-    vkCmdDraw(command_buffer, 3, 1, 0, 0);
+    auto vertex_buffers = std::vector<VkBuffer>{vertex_buffer};
+    auto offsets = std::vector<VkDeviceSize>{0};
+    vkCmdBindVertexBuffers(command_buffer, 0, 1, vertex_buffers.data(), offsets.data());
+
+    vkCmdDraw(command_buffer, static_cast<uint32_t>(vertices.size()), 1, 0, 0);
 
     vkCmdEndRenderPass(command_buffer);
 
@@ -840,6 +924,20 @@ auto Hello_Triangle_Application::is_device_suitable(VkPhysicalDevice device) -> 
     }
 
     return indices.complete() && extension_supported && swap_chain_adequate;
+}
+
+auto Hello_Triangle_Application::find_memory_type(uint32_t type_filter, VkMemoryPropertyFlags properties) -> uint32_t
+{
+    auto memory_properties = VkPhysicalDeviceMemoryProperties{};
+    vkGetPhysicalDeviceMemoryProperties(physical_device, &memory_properties);
+
+    for (auto i = (uint32_t) 0; i < memory_properties.memoryTypeCount; i++) {
+        if (type_filter & (1 << i) && (memory_properties.memoryTypes[i].propertyFlags & properties) == properties) {
+            return i;
+        }
+    }
+
+    throw std::runtime_error("failed to find suitable memory type!");
 }
 
 auto Hello_Triangle_Application::choose_swap_surface_format(std::vector<VkSurfaceFormatKHR> const& available_formats) -> VkSurfaceFormatKHR

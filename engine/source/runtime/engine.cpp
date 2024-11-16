@@ -159,6 +159,10 @@ auto Hello_Triangle_Application::init_vulkan() -> void
 
     create_texture_image();
 
+    create_texture_image_view();
+
+    create_texture_sampler();
+
     create_vertex_buffer();
 
     create_index_buffer();
@@ -204,6 +208,9 @@ auto Hello_Triangle_Application::clean_up() -> void
 
     vkFreeMemory(logical_device, vertex_buffer_memory, nullptr);
     vkDestroyBuffer(logical_device, vertex_buffer, nullptr);
+
+    vkDestroySampler(logical_device, texture_sampler, nullptr);
+    vkDestroyImageView(logical_device, texture_image_view, nullptr);
 
     vkDestroyImage(logical_device, texture_image, nullptr);
     vkFreeMemory(logical_device, texture_image_memory, nullptr);
@@ -331,6 +338,7 @@ auto Hello_Triangle_Application::create_logical_device() -> void
     }
 
     auto device_features = VkPhysicalDeviceFeatures{};
+    device_features.samplerAnisotropy = VK_TRUE;
     auto create_info = VkDeviceCreateInfo{};
     create_info.sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO;
     create_info.queueCreateInfoCount = static_cast<uint32_t>(queue_create_infos.size());
@@ -416,25 +424,7 @@ auto Hello_Triangle_Application::create_image_views() -> void
     swap_chain_image_views.resize(swap_chain_images.size());
 
     for (auto i = (size_t) 0; i < swap_chain_images.size(); i++) {
-        auto create_info = VkImageViewCreateInfo{};
-        create_info.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
-        create_info.image = swap_chain_images[i];
-        create_info.viewType = VK_IMAGE_VIEW_TYPE_2D;
-        create_info.format = swap_chain_image_format;
-        create_info.components.r = VK_COMPONENT_SWIZZLE_IDENTITY;
-        create_info.components.g = VK_COMPONENT_SWIZZLE_IDENTITY;
-        create_info.components.b = VK_COMPONENT_SWIZZLE_IDENTITY;
-        create_info.components.a = VK_COMPONENT_SWIZZLE_IDENTITY;
-        create_info.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
-        create_info.subresourceRange.baseMipLevel = 0;
-        create_info.subresourceRange.levelCount = 1;
-        create_info.subresourceRange.baseArrayLayer = 0;
-        create_info.subresourceRange.layerCount = 1;
-
-        auto result = vkCreateImageView(logical_device, &create_info, nullptr, &swap_chain_image_views[i]);
-        if (result != VK_SUCCESS) {
-            throw std::runtime_error("failed to create image views!");
-        }
+        swap_chain_image_views[i] = create_image_view(swap_chain_images[i], swap_chain_image_format);
     }
 }
 
@@ -730,6 +720,39 @@ auto Hello_Triangle_Application::create_texture_image() -> void
 
     vkDestroyBuffer(logical_device, staging_buffer, nullptr);
     vkFreeMemory(logical_device, staging_buffer_memory, nullptr);
+}
+
+auto Hello_Triangle_Application::create_texture_image_view() -> void
+{
+    texture_image_view = create_image_view(texture_image, VK_FORMAT_R8G8B8A8_SRGB);
+}
+
+auto Hello_Triangle_Application::create_texture_sampler() -> void
+{
+    auto sampler_create_info = VkSamplerCreateInfo{};
+    sampler_create_info.sType = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO;
+    sampler_create_info.magFilter = VK_FILTER_LINEAR;
+    sampler_create_info.minFilter = VK_FILTER_LINEAR;
+    sampler_create_info.addressModeU = VK_SAMPLER_ADDRESS_MODE_REPEAT;
+    sampler_create_info.addressModeV = VK_SAMPLER_ADDRESS_MODE_REPEAT;
+    sampler_create_info.addressModeW = VK_SAMPLER_ADDRESS_MODE_REPEAT;
+    sampler_create_info.anisotropyEnable = VK_TRUE;
+    auto properties = VkPhysicalDeviceProperties{};
+    vkGetPhysicalDeviceProperties(physical_device, &properties);
+    sampler_create_info.maxAnisotropy = properties.limits.maxSamplerAnisotropy;
+    sampler_create_info.borderColor = VK_BORDER_COLOR_INT_OPAQUE_WHITE;
+    sampler_create_info.unnormalizedCoordinates = VK_FALSE;
+    sampler_create_info.compareEnable = VK_FALSE;
+    sampler_create_info.compareOp = VK_COMPARE_OP_ALWAYS;
+    sampler_create_info.mipmapMode = VK_SAMPLER_MIPMAP_MODE_LINEAR;
+    sampler_create_info.mipLodBias = 0.0f;
+    sampler_create_info.minLod = 0.0f;
+    sampler_create_info.maxLod = 0.0f;
+
+    auto result = vkCreateSampler(logical_device, &sampler_create_info, nullptr, &texture_sampler);
+    if (result != VK_SUCCESS) {
+        throw std::runtime_error("failed to create texture sampler!");
+    }
 }
 
 auto Hello_Triangle_Application::create_vertex_buffer() -> void
@@ -1163,6 +1186,28 @@ auto Hello_Triangle_Application::create_image(uint32_t width, uint32_t height, V
     vkBindImageMemory(logical_device, *image, *image_memory, 0);
 }
 
+auto Hello_Triangle_Application::create_image_view(VkImage image, VkFormat format) -> VkImageView
+{
+    auto image_view_create_info = VkImageViewCreateInfo{};
+    image_view_create_info.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
+    image_view_create_info.image = image;
+    image_view_create_info.viewType = VK_IMAGE_VIEW_TYPE_2D;
+    image_view_create_info.format = format;
+    image_view_create_info.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+    image_view_create_info.subresourceRange.baseMipLevel = 0;
+    image_view_create_info.subresourceRange.levelCount = 1;
+    image_view_create_info.subresourceRange.baseArrayLayer = 0;
+    image_view_create_info.subresourceRange.layerCount = 1;
+
+    auto image_view = VkImageView{};
+    auto result = vkCreateImageView(logical_device, &image_view_create_info, nullptr, &image_view);
+    if (result != VK_SUCCESS) {
+        throw std::runtime_error("failed to create texture image view!");
+    }
+
+    return image_view;
+}
+
 auto Hello_Triangle_Application::begin_single_time_commands() -> VkCommandBuffer
 {
     auto command_buffer_allocate_info = VkCommandBufferAllocateInfo{};
@@ -1363,7 +1408,10 @@ auto Hello_Triangle_Application::is_device_suitable(VkPhysicalDevice device) -> 
         swap_chain_adequate = !swap_chain_support.formats.empty() && !swap_chain_support.present_modes.empty();
     }
 
-    return indices.complete() && extension_supported && swap_chain_adequate;
+    auto supported_features = VkPhysicalDeviceFeatures{};
+    vkGetPhysicalDeviceFeatures(device, &supported_features);
+
+    return indices.complete() && extension_supported && swap_chain_adequate && supported_features.samplerAnisotropy;
 }
 
 auto Hello_Triangle_Application::find_memory_type(uint32_t type_filter, VkMemoryPropertyFlags properties) -> uint32_t

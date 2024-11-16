@@ -50,6 +50,8 @@ private:
 
     VkImage texture_image{};
     VkDeviceMemory texture_image_memory{};
+    VkImageView texture_image_view{};
+    VkSampler texture_sampler{};
 
     VkInstance instance{};
     VkPhysicalDevice physical_device{VK_NULL_HANDLE};
@@ -98,6 +100,8 @@ private:
     auto create_framebuffers() -> void;
     auto create_command_pool() -> void;
     auto create_texture_image() -> void;
+    auto create_texture_image_view() -> void;
+    auto create_texture_sampler() -> void;
     auto create_vertex_buffer() -> void;
     auto create_index_buffer() -> void;
     auto create_uniform_buffers() -> void;
@@ -115,6 +119,7 @@ private:
     auto copy_buffer_to_image(VkBuffer buffer, VkImage image, uint32_t width, uint32_t height) -> void;
     auto update_uniform_buffer(uint32_t current_image) -> void;
     auto create_image(uint32_t width, uint32_t height, VkFormat format, VkImageTiling tiling, VkImageUsageFlags usage, VkMemoryPropertyFlags properties, VkImage* image, VkDeviceMemory* image_memory) -> void;
+    auto create_image_view(VkImage image, VkFormat format) -> VkImageView;
     auto begin_single_time_commands() -> VkCommandBuffer;
     auto end_single_time_commands(VkCommandBuffer command_buffer) -> void;
     auto transition_image_layout(VkImage image, VkFormat format, VkImageLayout old_layout, VkImageLayout new_layout) -> void;

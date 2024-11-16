@@ -44,6 +44,7 @@ inline namespace
     {
         glm::vec2 position{};
         glm::vec3 color{};
+        glm::vec2 tex_coord{};
 
         static auto get_binding_description() -> VkVertexInputBindingDescription
         {
@@ -55,9 +56,9 @@ inline namespace
             return binding_description;
         }
 
-        static auto get_attribute_descriptions() -> std::array<VkVertexInputAttributeDescription, 2>
+        static auto get_attribute_descriptions() -> std::array<VkVertexInputAttributeDescription, 3>
         {
-            auto attribute_descriptions = std::array<VkVertexInputAttributeDescription, 2>{};
+            auto attribute_descriptions = std::array<VkVertexInputAttributeDescription, 3>{};
             attribute_descriptions[0].binding = 0;
             attribute_descriptions[0].location = 0;
             attribute_descriptions[0].format = VK_FORMAT_R32G32_SFLOAT;
@@ -66,16 +67,20 @@ inline namespace
             attribute_descriptions[1].location = 1;
             attribute_descriptions[1].format = VK_FORMAT_R32G32B32_SFLOAT;
             attribute_descriptions[1].offset = offsetof(Vertex, color);
+            attribute_descriptions[2].binding = 0;
+            attribute_descriptions[2].location = 2;
+            attribute_descriptions[2].format = VK_FORMAT_R32G32_SFLOAT;
+            attribute_descriptions[2].offset = offsetof(Vertex, tex_coord);
 
             return attribute_descriptions;
         }
     };
 
     auto vertices = std::vector<Vertex>{
-        {{-0.5f, -0.5f}, {1.0f, 0.0f, 0.0f}},
-        {{ 0.5f, -0.5f}, {0.0f, 1.0f, 0.0f}},
-        {{ 0.5f,  0.5f}, {0.0f, 0.0f, 1.0f}},
-        {{-0.5f,  0.5f}, {1.0f, 1.0f, 1.0f}},
+        {{-0.5f, -0.5f}, {1.0f, 0.0f, 0.0f}, {1.0f, 0.0f}},
+        {{ 0.5f, -0.5f}, {0.0f, 1.0f, 0.0f}, {0.0f, 0.0f}},
+        {{ 0.5f,  0.5f}, {0.0f, 0.0f, 1.0f}, {0.0f, 1.0f}},
+        {{-0.5f,  0.5f}, {1.0f, 1.0f, 1.0f}, {1.0f, 1.0f}},
     };
 
     auto indices = std::vector<uint16_t>{
@@ -481,10 +486,19 @@ auto Hello_Triangle_Application::create_descriptor_set_layout() -> void
     ubo_layout_binding.stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
     ubo_layout_binding.pImmutableSamplers = nullptr;
 
+    auto sampler_layout_binding = VkDescriptorSetLayoutBinding{};
+    sampler_layout_binding.binding = 1;
+    sampler_layout_binding.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+    sampler_layout_binding.descriptorCount = 1;
+    sampler_layout_binding.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
+    sampler_layout_binding.pImmutableSamplers = nullptr;
+
+    auto bindings = std::array<VkDescriptorSetLayoutBinding, 2>{ubo_layout_binding, sampler_layout_binding};
+
     auto descriptor_set_layout_create_info = VkDescriptorSetLayoutCreateInfo{};
     descriptor_set_layout_create_info.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
-    descriptor_set_layout_create_info.bindingCount = 1;
-    descriptor_set_layout_create_info.pBindings = &ubo_layout_binding;
+    descriptor_set_layout_create_info.bindingCount = static_cast<uint32_t>(bindings.size());
+    descriptor_set_layout_create_info.pBindings = bindings.data();
 
     auto result = vkCreateDescriptorSetLayout(logical_device, &descriptor_set_layout_create_info, nullptr, &descriptor_set_layout);
     if (result != VK_SUCCESS) {
@@ -841,14 +855,16 @@ auto Hello_Triangle_Application::create_uniform_buffers() -> void
 
 auto Hello_Triangle_Application::create_descriptor_pool() -> void
 {
-    auto pool_size = VkDescriptorPoolSize{};
-    pool_size.type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
-    pool_size.descriptorCount = static_cast<uint32_t>(MAX_FRAMES_IN_FLIGHT);
+    auto pool_sizes = std::array<VkDescriptorPoolSize, 2>{};
+    pool_sizes[0].type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+    pool_sizes[0].descriptorCount = static_cast<uint32_t>(MAX_FRAMES_IN_FLIGHT);
+    pool_sizes[1].type = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+    pool_sizes[1].descriptorCount = static_cast<uint32_t>(MAX_FRAMES_IN_FLIGHT);
 
     auto descriptor_pool_create_info = VkDescriptorPoolCreateInfo{};
     descriptor_pool_create_info.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
-    descriptor_pool_create_info.poolSizeCount = 1;
-    descriptor_pool_create_info.pPoolSizes = &pool_size;
+    descriptor_pool_create_info.poolSizeCount = static_cast<uint32_t>(pool_sizes.size());
+    descriptor_pool_create_info.pPoolSizes = pool_sizes.data();
     descriptor_pool_create_info.maxSets = static_cast<uint32_t>(MAX_FRAMES_IN_FLIGHT);
 
     auto result = vkCreateDescriptorPool(logical_device, &descriptor_pool_create_info, nullptr, &descriptor_pool);
@@ -879,18 +895,33 @@ auto Hello_Triangle_Application::create_descriptor_sets() -> void
         buffer_info.offset = 0;
         buffer_info.range = sizeof(Uniform_Buffer_Object);
 
-        auto write_descriptor_set = VkWriteDescriptorSet{};
-        write_descriptor_set.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-        write_descriptor_set.dstSet = descriptor_sets[i];
-        write_descriptor_set.dstBinding = 0;
-        write_descriptor_set.dstArrayElement = 0;
-        write_descriptor_set.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
-        write_descriptor_set.descriptorCount = 1;
-        write_descriptor_set.pBufferInfo = &buffer_info;
-        write_descriptor_set.pImageInfo = nullptr;
-        write_descriptor_set.pTexelBufferView = nullptr;
+        auto image_info = VkDescriptorImageInfo{};
+        image_info.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+        image_info.imageView = texture_image_view;
+        image_info.sampler = texture_sampler;
 
-        vkUpdateDescriptorSets(logical_device, 1, &write_descriptor_set, 0, nullptr);
+        auto write_descriptor_sets = std::array<VkWriteDescriptorSet, 2>{};
+        write_descriptor_sets[0].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+        write_descriptor_sets[0].dstSet = descriptor_sets[i];
+        write_descriptor_sets[0].dstBinding = 0;
+        write_descriptor_sets[0].dstArrayElement = 0;
+        write_descriptor_sets[0].descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+        write_descriptor_sets[0].descriptorCount = 1;
+        write_descriptor_sets[0].pBufferInfo = &buffer_info;
+        write_descriptor_sets[0].pImageInfo = nullptr;
+        write_descriptor_sets[0].pTexelBufferView = nullptr;
+
+        write_descriptor_sets[1].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+        write_descriptor_sets[1].dstSet = descriptor_sets[i];
+        write_descriptor_sets[1].dstBinding = 1;
+        write_descriptor_sets[1].dstArrayElement = 0;
+        write_descriptor_sets[1].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+        write_descriptor_sets[1].descriptorCount = 1;
+        write_descriptor_sets[1].pBufferInfo = nullptr;
+        write_descriptor_sets[1].pImageInfo = &image_info;
+        write_descriptor_sets[1].pTexelBufferView = nullptr;
+
+        vkUpdateDescriptorSets(logical_device, static_cast<uint32_t>(write_descriptor_sets.size()), write_descriptor_sets.data(), 0, nullptr);
     }
 }
 

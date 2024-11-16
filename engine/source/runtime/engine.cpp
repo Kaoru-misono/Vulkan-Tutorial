@@ -141,6 +141,10 @@ auto Hello_Triangle_Application::init_vulkan() -> void
 
     create_uniform_buffers();
 
+    create_descriptor_pool();
+
+    create_descriptor_sets();
+
     create_command_buffers();
 
     create_sync_objects();
@@ -165,6 +169,8 @@ auto Hello_Triangle_Application::clean_up() -> void
     }
 
     vkDestroyCommandPool(logical_device, command_pool, nullptr);
+
+    vkDestroyDescriptorPool(logical_device, descriptor_pool, nullptr);
 
     for (auto i = (size_t) 0; i < MAX_FRAMES_IN_FLIGHT; i++) {
         vkDestroyBuffer(logical_device, uniform_buffers[i], nullptr);
@@ -536,7 +542,7 @@ auto Hello_Triangle_Application::create_graphics_pipeline() -> void
     rasterization_state_create_info.polygonMode = VK_POLYGON_MODE_FILL;
     rasterization_state_create_info.lineWidth = 1.0f;
     rasterization_state_create_info.cullMode = VK_CULL_MODE_BACK_BIT;
-    rasterization_state_create_info.frontFace = VK_FRONT_FACE_CLOCKWISE;
+    rasterization_state_create_info.frontFace = VK_FRONT_FACE_COUNTER_CLOCKWISE;
     rasterization_state_create_info.depthBiasEnable = VK_FALSE;
     rasterization_state_create_info.depthBiasConstantFactor = 0.0f;
     rasterization_state_create_info.depthBiasClamp = 0.0f;
@@ -757,6 +763,61 @@ auto Hello_Triangle_Application::create_uniform_buffers() -> void
     }
 }
 
+auto Hello_Triangle_Application::create_descriptor_pool() -> void
+{
+    auto pool_size = VkDescriptorPoolSize{};
+    pool_size.type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+    pool_size.descriptorCount = static_cast<uint32_t>(MAX_FRAMES_IN_FLIGHT);
+
+    auto descriptor_pool_create_info = VkDescriptorPoolCreateInfo{};
+    descriptor_pool_create_info.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
+    descriptor_pool_create_info.poolSizeCount = 1;
+    descriptor_pool_create_info.pPoolSizes = &pool_size;
+    descriptor_pool_create_info.maxSets = static_cast<uint32_t>(MAX_FRAMES_IN_FLIGHT);
+
+    auto result = vkCreateDescriptorPool(logical_device, &descriptor_pool_create_info, nullptr, &descriptor_pool);
+    if (result != VK_SUCCESS) {
+        throw std::runtime_error("failed to create descriptor pool!");
+    }
+}
+
+auto Hello_Triangle_Application::create_descriptor_sets() -> void
+{
+    auto layouts = std::vector<VkDescriptorSetLayout>{MAX_FRAMES_IN_FLIGHT, descriptor_set_layout};
+
+    auto descriptor_set_allocate_info = VkDescriptorSetAllocateInfo{};
+    descriptor_set_allocate_info.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
+    descriptor_set_allocate_info.descriptorPool = descriptor_pool;
+    descriptor_set_allocate_info.descriptorSetCount = static_cast<uint32_t>(MAX_FRAMES_IN_FLIGHT);
+    descriptor_set_allocate_info.pSetLayouts = layouts.data();
+
+    descriptor_sets.resize(MAX_FRAMES_IN_FLIGHT);
+    auto result = vkAllocateDescriptorSets(logical_device, &descriptor_set_allocate_info, descriptor_sets.data());
+    if (result != VK_SUCCESS) {
+        throw std::runtime_error("failed to create descriptor sets!");
+    }
+
+    for (auto i = (size_t) 0; i < MAX_FRAMES_IN_FLIGHT; i++) {
+        auto buffer_info = VkDescriptorBufferInfo{};
+        buffer_info.buffer = uniform_buffers[i];
+        buffer_info.offset = 0;
+        buffer_info.range = sizeof(Uniform_Buffer_Object);
+
+        auto write_descriptor_set = VkWriteDescriptorSet{};
+        write_descriptor_set.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+        write_descriptor_set.dstSet = descriptor_sets[i];
+        write_descriptor_set.dstBinding = 0;
+        write_descriptor_set.dstArrayElement = 0;
+        write_descriptor_set.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+        write_descriptor_set.descriptorCount = 1;
+        write_descriptor_set.pBufferInfo = &buffer_info;
+        write_descriptor_set.pImageInfo = nullptr;
+        write_descriptor_set.pTexelBufferView = nullptr;
+
+        vkUpdateDescriptorSets(logical_device, 1, &write_descriptor_set, 0, nullptr);
+    }
+}
+
 auto Hello_Triangle_Application::create_command_buffers() -> void
 {
     command_buffers.resize(MAX_FRAMES_IN_FLIGHT);
@@ -897,6 +958,8 @@ auto Hello_Triangle_Application::record_command_buffer(VkCommandBuffer command_b
     vkCmdBindVertexBuffers(command_buffer, 0, 1, vertex_buffers.data(), offsets.data());
 
     vkCmdBindIndexBuffer(command_buffer, index_buffer, 0, VK_INDEX_TYPE_UINT16);
+
+    vkCmdBindDescriptorSets(command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline_layout, 0, 1, &descriptor_sets[current_frame], 0, nullptr);
 
     vkCmdDrawIndexed(command_buffer, static_cast<uint32_t>(indices.size()), 1, 0, 0, 0);
 

@@ -31,7 +31,9 @@ private:
     VkFormat swap_chain_image_format{};
     VkExtent2D swap_chain_extent{};
     VkRenderPass render_pass{};
+    VkDescriptorPool descriptor_pool{};
     VkDescriptorSetLayout descriptor_set_layout{};
+    std::vector<VkDescriptorSet> descriptor_sets{};
     VkPipelineLayout pipeline_layout{};
     VkPipeline graphics_pipeline{};
     VkCommandPool command_pool{};
@@ -95,6 +97,8 @@ private:
     auto create_vertex_buffer() -> void;
     auto create_index_buffer() -> void;
     auto create_uniform_buffers() -> void;
+    auto create_descriptor_pool() -> void;
+    auto create_descriptor_sets() -> void;
     auto create_command_buffers() -> void;
     auto create_sync_objects() -> void;
 

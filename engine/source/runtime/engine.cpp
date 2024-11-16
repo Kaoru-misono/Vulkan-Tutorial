@@ -14,6 +14,7 @@
 #include <algorithm>
 #include <array>
 #include <chrono>
+#include <filesystem>
 
 inline namespace
 {
@@ -89,6 +90,22 @@ inline namespace
     };
 
     auto start_time = std::chrono::high_resolution_clock::now();
+
+    std::string bin_dir = std::filesystem::current_path().string();
+
+    auto get_source_dir = [](std::string const& bin_dir) -> std::string
+    {
+        auto ps = bin_dir.rfind("Vulkan-Tutorial");
+
+        auto source_path = bin_dir.substr(0, ps);
+
+        replace(source_path.begin(), source_path.end(), '\\', '/');
+        return source_path;
+    };
+
+    auto source_dir = get_source_dir(bin_dir);
+
+    auto asset_dir = source_dir + "Vulkan-Tutorial/engine/asset/";
 }
 
 auto Hello_Triangle_Application::run() -> void
@@ -670,7 +687,8 @@ auto Hello_Triangle_Application::create_texture_image() -> void
     auto texture_width = 0;
     auto texture_height = 0;
     auto texture_channels = 0;
-    auto pixels = stbi_load("C:/dev/Vulkan-Tutorial/engine/asset/texture/quad-donuts.png", &texture_width, &texture_height, &texture_channels, STBI_rgb_alpha);
+    auto texture_path = asset_dir + "texture/quad-donuts.png";
+    auto pixels = stbi_load(texture_path.c_str(), &texture_width, &texture_height, &texture_channels, STBI_rgb_alpha);
     auto image_size = (VkDeviceSize) texture_width * texture_height * 4;
 
     if (!pixels) {

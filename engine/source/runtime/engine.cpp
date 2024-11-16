@@ -6,6 +6,9 @@
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
 
+#define STB_IMAGE_IMPLEMENTATION
+#include <stb_image.h>
+
 #include <set>
 #include <limits>
 #include <algorithm>
@@ -84,6 +87,8 @@ inline namespace
         glm::mat4 view_matrix{};
         glm::mat4 projection_matrix{};
     };
+
+    auto start_time = std::chrono::high_resolution_clock::now();
 }
 
 auto Hello_Triangle_Application::run() -> void
@@ -135,6 +140,8 @@ auto Hello_Triangle_Application::init_vulkan() -> void
 
     create_command_pool();
 
+    create_texture_image();
+
     create_vertex_buffer();
 
     create_index_buffer();
@@ -168,8 +175,6 @@ auto Hello_Triangle_Application::clean_up() -> void
         vkDestroyFence(logical_device, in_flight_fences[i], nullptr);
     }
 
-    vkDestroyCommandPool(logical_device, command_pool, nullptr);
-
     vkDestroyDescriptorPool(logical_device, descriptor_pool, nullptr);
 
     for (auto i = (size_t) 0; i < MAX_FRAMES_IN_FLIGHT; i++) {
@@ -182,6 +187,11 @@ auto Hello_Triangle_Application::clean_up() -> void
 
     vkFreeMemory(logical_device, vertex_buffer_memory, nullptr);
     vkDestroyBuffer(logical_device, vertex_buffer, nullptr);
+
+    vkDestroyImage(logical_device, texture_image, nullptr);
+    vkFreeMemory(logical_device, texture_image_memory, nullptr);
+
+    vkDestroyCommandPool(logical_device, command_pool, nullptr);
 
     for (auto framebuffer: swap_chain_framebuffers) {
         vkDestroyFramebuffer(logical_device, framebuffer, nullptr);
@@ -655,28 +665,53 @@ auto Hello_Triangle_Application::create_command_pool() -> void
     }
 }
 
-auto Hello_Triangle_Application::create_sync_objects() -> void
+auto Hello_Triangle_Application::create_texture_image() -> void
 {
-    image_available_semaphores.resize(MAX_FRAMES_IN_FLIGHT);
-    render_finished_semaphores.resize(MAX_FRAMES_IN_FLIGHT);
-    in_flight_fences.resize(MAX_FRAMES_IN_FLIGHT);
+    auto texture_width = 0;
+    auto texture_height = 0;
+    auto texture_channels = 0;
+    auto pixels = stbi_load("C:/dev/Vulkan-Tutorial/engine/asset/texture/quad-donuts.png", &texture_width, &texture_height, &texture_channels, STBI_rgb_alpha);
+    auto image_size = (VkDeviceSize) texture_width * texture_height * 4;
 
-    auto semaphore_create_info = VkSemaphoreCreateInfo{};
-    semaphore_create_info.sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO;
-
-    auto fence_create_info = VkFenceCreateInfo{};
-    fence_create_info.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
-    fence_create_info.flags = VK_FENCE_CREATE_SIGNALED_BIT;
-
-    for (auto i = (size_t) 0; i < MAX_FRAMES_IN_FLIGHT; i++) {
-        auto semaphore_result1 = vkCreateSemaphore(logical_device, &semaphore_create_info, nullptr, &image_available_semaphores[i]);
-        auto semaphore_result2 = vkCreateSemaphore(logical_device, &semaphore_create_info, nullptr, &render_finished_semaphores[i]);
-        auto fence_result = vkCreateFence(logical_device, &fence_create_info, nullptr, &in_flight_fences[i]);
-
-        if (semaphore_result1 != VK_SUCCESS || semaphore_result2 != VK_SUCCESS || fence_result != VK_SUCCESS) {
-            throw std::runtime_error("failed to create semaphores!");
-        }
+    if (!pixels) {
+        throw std::runtime_error("failed to load texture image!");
     }
+
+    auto staging_buffer = VkBuffer{};
+    auto staging_buffer_memory = VkDeviceMemory{};
+
+    create_buffer(
+        image_size,
+        VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
+        VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
+        &staging_buffer,
+        &staging_buffer_memory
+    );
+
+    auto data = (void*) nullptr;
+    vkMapMemory(logical_device, staging_buffer_memory, 0, image_size, 0, &data);
+    memcpy(data, pixels, static_cast<size_t>(image_size));
+    vkUnmapMemory(logical_device, staging_buffer_memory);
+
+    stbi_image_free(pixels);
+
+    create_image(
+        texture_width,
+        texture_height,
+        VK_FORMAT_R8G8B8A8_SRGB,
+        VK_IMAGE_TILING_OPTIMAL,
+        VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT,
+        VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
+        &texture_image,
+        &texture_image_memory
+    );
+
+    transition_image_layout(texture_image, VK_FORMAT_R8G8B8A8_SRGB, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
+    copy_buffer_to_image(staging_buffer, texture_image, static_cast<uint32_t>(texture_width), static_cast<uint32_t>(texture_height));
+    transition_image_layout(texture_image, VK_FORMAT_R8G8B8A8_SRGB, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+
+    vkDestroyBuffer(logical_device, staging_buffer, nullptr);
+    vkFreeMemory(logical_device, staging_buffer_memory, nullptr);
 }
 
 auto Hello_Triangle_Application::create_vertex_buffer() -> void
@@ -830,6 +865,30 @@ auto Hello_Triangle_Application::create_command_buffers() -> void
     auto result = vkAllocateCommandBuffers(logical_device, &allocate_info, command_buffers.data());
     if (result != VK_SUCCESS) {
         throw std::runtime_error("failed to create command buffer!");
+    }
+}
+
+auto Hello_Triangle_Application::create_sync_objects() -> void
+{
+    image_available_semaphores.resize(MAX_FRAMES_IN_FLIGHT);
+    render_finished_semaphores.resize(MAX_FRAMES_IN_FLIGHT);
+    in_flight_fences.resize(MAX_FRAMES_IN_FLIGHT);
+
+    auto semaphore_create_info = VkSemaphoreCreateInfo{};
+    semaphore_create_info.sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO;
+
+    auto fence_create_info = VkFenceCreateInfo{};
+    fence_create_info.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
+    fence_create_info.flags = VK_FENCE_CREATE_SIGNALED_BIT;
+
+    for (auto i = (size_t) 0; i < MAX_FRAMES_IN_FLIGHT; i++) {
+        auto semaphore_result1 = vkCreateSemaphore(logical_device, &semaphore_create_info, nullptr, &image_available_semaphores[i]);
+        auto semaphore_result2 = vkCreateSemaphore(logical_device, &semaphore_create_info, nullptr, &render_finished_semaphores[i]);
+        auto fence_result = vkCreateFence(logical_device, &fence_create_info, nullptr, &in_flight_fences[i]);
+
+        if (semaphore_result1 != VK_SUCCESS || semaphore_result2 != VK_SUCCESS || fence_result != VK_SUCCESS) {
+            throw std::runtime_error("failed to create semaphores!");
+        }
     }
 }
 
@@ -1002,6 +1061,92 @@ auto Hello_Triangle_Application::create_buffer(VkDeviceSize size, VkBufferUsageF
 
 auto Hello_Triangle_Application::copy_buffer(VkBuffer src_buffer, VkBuffer dst_buffer, VkDeviceSize size) -> void
 {
+    auto command_buffer = begin_single_time_commands();
+
+    auto copy_region = VkBufferCopy{};
+    copy_region.srcOffset = 0;
+    copy_region.dstOffset = 0;
+    copy_region.size = size;
+    vkCmdCopyBuffer(command_buffer, src_buffer, dst_buffer, 1, &copy_region);
+
+    end_single_time_commands(command_buffer);
+}
+
+auto Hello_Triangle_Application::copy_buffer_to_image(VkBuffer buffer, VkImage image, uint32_t width, uint32_t height) -> void
+{
+    auto command_buffer = begin_single_time_commands();
+
+    auto buffer_image_copy = VkBufferImageCopy{};
+    buffer_image_copy.bufferOffset = 0;
+    buffer_image_copy.bufferRowLength = 0;
+    buffer_image_copy.bufferImageHeight = 0;
+    buffer_image_copy.imageSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+    buffer_image_copy.imageSubresource.mipLevel = 0;
+    buffer_image_copy.imageSubresource.baseArrayLayer = 0;
+    buffer_image_copy.imageSubresource.layerCount = 1;
+    buffer_image_copy.imageOffset = {0, 0, 0};
+    buffer_image_copy.imageExtent = {width, height, 1};
+
+    vkCmdCopyBufferToImage(command_buffer, buffer, image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &buffer_image_copy);
+
+    end_single_time_commands(command_buffer);
+}
+
+auto Hello_Triangle_Application::update_uniform_buffer(uint32_t current_image) -> void
+{
+    auto current_time = std::chrono::high_resolution_clock::now();
+    auto time = std::chrono::duration<float, std::chrono::seconds::period>(current_time - start_time).count();
+
+    auto ubo = Uniform_Buffer_Object{};
+    ubo.model_matrix = glm::rotate(glm::mat4(1.0f), time * glm::radians(90.0f), glm::vec3(0.0f, 0.0f, 1.0f));
+    ubo.view_matrix = glm::lookAt(glm::vec3(2.0f, 2.0f, 2.0f), glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(0.0f, 0.0f, 1.0f));
+    ubo.projection_matrix = glm::perspective(glm::radians(45.0f), swap_chain_extent.width / (float) swap_chain_extent.height, 0.1f, 10.0f);
+    ubo.projection_matrix[1][1] *= -1.0f;
+
+    memcpy(uniform_buffers_mapped[current_image], &ubo, sizeof(ubo));
+}
+
+auto Hello_Triangle_Application::create_image(uint32_t width, uint32_t height, VkFormat format, VkImageTiling tiling, VkImageUsageFlags usage, VkMemoryPropertyFlags properties, VkImage* image, VkDeviceMemory* image_memory) -> void
+{
+    auto image_info = VkImageCreateInfo{};
+    image_info.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
+    image_info.imageType = VK_IMAGE_TYPE_2D;
+    image_info.extent.width = static_cast<uint32_t>(width);
+    image_info.extent.height = static_cast<uint32_t>(height);
+    image_info.extent.depth = 1;
+    image_info.mipLevels = 1;
+    image_info.arrayLayers = 1;
+    image_info.format = format;
+    image_info.tiling = tiling;
+    image_info.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+    image_info.usage = usage;
+    image_info.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+    image_info.samples = VK_SAMPLE_COUNT_1_BIT;
+    image_info.flags = 0;
+
+    auto result = vkCreateImage(logical_device, &image_info, nullptr, image);
+    if (result != VK_SUCCESS) {
+        throw std::runtime_error("failed to create image!");
+    }
+
+    auto memory_requirements = VkMemoryRequirements{};
+    vkGetImageMemoryRequirements(logical_device, *image, &memory_requirements);
+
+    auto memory_allocate_info = VkMemoryAllocateInfo{};
+    memory_allocate_info.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
+    memory_allocate_info.allocationSize = memory_requirements.size;
+    memory_allocate_info.memoryTypeIndex = find_memory_type(memory_requirements.memoryTypeBits, properties);
+
+    auto allocate_result = vkAllocateMemory(logical_device, &memory_allocate_info, nullptr, image_memory);
+    if (allocate_result != VK_SUCCESS) {
+        throw std::runtime_error("failed to allocate image memory!");
+    }
+
+    vkBindImageMemory(logical_device, *image, *image_memory, 0);
+}
+
+auto Hello_Triangle_Application::begin_single_time_commands() -> VkCommandBuffer
+{
     auto command_buffer_allocate_info = VkCommandBufferAllocateInfo{};
     command_buffer_allocate_info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
     command_buffer_allocate_info.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
@@ -1017,12 +1162,11 @@ auto Hello_Triangle_Application::copy_buffer(VkBuffer src_buffer, VkBuffer dst_b
 
     vkBeginCommandBuffer(command_buffer, &command_buffer_begin_info);
 
-    auto copy_region = VkBufferCopy{};
-    copy_region.srcOffset = 0;
-    copy_region.dstOffset = 0;
-    copy_region.size = size;
-    vkCmdCopyBuffer(command_buffer, src_buffer, dst_buffer, 1, &copy_region);
+    return command_buffer;
+}
 
+auto Hello_Triangle_Application::end_single_time_commands(VkCommandBuffer command_buffer) -> void
+{
     vkEndCommandBuffer(command_buffer);
 
     auto submit_info = VkSubmitInfo{};
@@ -1036,20 +1180,46 @@ auto Hello_Triangle_Application::copy_buffer(VkBuffer src_buffer, VkBuffer dst_b
     vkFreeCommandBuffers(logical_device, command_pool, 1, &command_buffer);
 }
 
-auto Hello_Triangle_Application::update_uniform_buffer(uint32_t current_image) -> void
+auto Hello_Triangle_Application::transition_image_layout(VkImage image, VkFormat format, VkImageLayout old_layout, VkImageLayout new_layout) -> void
 {
-    static auto start_time = std::chrono::high_resolution_clock::now();
+    auto command_buffer = begin_single_time_commands();
 
-    auto current_time = std::chrono::high_resolution_clock::now();
-    auto time = std::chrono::duration<float, std::chrono::seconds::period>(current_time - start_time).count();
+    auto source_stage = VkPipelineStageFlags{};
+    auto destination_stage = VkPipelineStageFlags{};
 
-    auto ubo = Uniform_Buffer_Object{};
-    ubo.model_matrix = glm::rotate(glm::mat4(1.0f), time * glm::radians(90.0f), glm::vec3(0.0f, 0.0f, 1.0f));
-    ubo.view_matrix = glm::lookAt(glm::vec3(2.0f, 2.0f, 2.0f), glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(0.0f, 0.0f, 1.0f));
-    ubo.projection_matrix = glm::perspective(glm::radians(45.0f), swap_chain_extent.width / (float) swap_chain_extent.height, 0.1f, 10.0f);
-    ubo.projection_matrix[1][1] *= -1.0f;
+    auto image_memory_barrier = VkImageMemoryBarrier{};
+    image_memory_barrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+    image_memory_barrier.oldLayout = old_layout;
+    image_memory_barrier.newLayout = new_layout;
+    image_memory_barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+    image_memory_barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+    image_memory_barrier.image = image;
+    image_memory_barrier.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+    image_memory_barrier.subresourceRange.baseMipLevel = 0;
+    image_memory_barrier.subresourceRange.levelCount = 1;
+    image_memory_barrier.subresourceRange.baseArrayLayer = 0;
+    image_memory_barrier.subresourceRange.layerCount = 1;
+    if (old_layout == VK_IMAGE_LAYOUT_UNDEFINED && new_layout == VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL) {
+        image_memory_barrier.srcAccessMask = 0;
+        image_memory_barrier.dstAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
 
-    memcpy(uniform_buffers_mapped[current_image], &ubo, sizeof(ubo));
+        source_stage = VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT;
+        destination_stage = VK_PIPELINE_STAGE_TRANSFER_BIT;
+    }
+    else if (old_layout == VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL && new_layout == VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL) {
+        image_memory_barrier.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+        image_memory_barrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
+
+        source_stage = VK_PIPELINE_STAGE_TRANSFER_BIT;
+        destination_stage = VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
+    }
+    else {
+        throw std::invalid_argument("unsupported layout transition!");
+    }
+
+    vkCmdPipelineBarrier(command_buffer, source_stage, destination_stage, 0, 0, nullptr, 0, nullptr, 1, &image_memory_barrier);
+
+    end_single_time_commands(command_buffer);
 }
 
 auto Hello_Triangle_Application::cleanup_swap_chain() -> void

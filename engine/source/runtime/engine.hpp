@@ -53,6 +53,10 @@ private:
     VkImageView texture_image_view{};
     VkSampler texture_sampler{};
 
+    VkImage depth_image{};
+    VkDeviceMemory depth_image_memory{};
+    VkImageView depth_image_view{};
+
     VkInstance instance{};
     VkPhysicalDevice physical_device{VK_NULL_HANDLE};
     VkDevice logical_device{};
@@ -99,6 +103,7 @@ private:
     auto create_graphics_pipeline() -> void;
     auto create_framebuffers() -> void;
     auto create_command_pool() -> void;
+    auto create_depth_resources() -> void;
     auto create_texture_image() -> void;
     auto create_texture_image_view() -> void;
     auto create_texture_sampler() -> void;
@@ -119,10 +124,12 @@ private:
     auto copy_buffer_to_image(VkBuffer buffer, VkImage image, uint32_t width, uint32_t height) -> void;
     auto update_uniform_buffer(uint32_t current_image) -> void;
     auto create_image(uint32_t width, uint32_t height, VkFormat format, VkImageTiling tiling, VkImageUsageFlags usage, VkMemoryPropertyFlags properties, VkImage* image, VkDeviceMemory* image_memory) -> void;
-    auto create_image_view(VkImage image, VkFormat format) -> VkImageView;
+    auto create_image_view(VkImage image, VkFormat format, VkImageAspectFlags aspect_flags) -> VkImageView;
     auto begin_single_time_commands() -> VkCommandBuffer;
     auto end_single_time_commands(VkCommandBuffer command_buffer) -> void;
     auto transition_image_layout(VkImage image, VkFormat format, VkImageLayout old_layout, VkImageLayout new_layout) -> void;
+    auto find_depth_format() -> VkFormat;
+    auto has_stencil_component(VkFormat format) -> bool;
 
     auto cleanup_swap_chain() -> void;
     auto recreate_swap_chain() -> void;
@@ -132,6 +139,7 @@ private:
     auto query_swap_chain_support(VkPhysicalDevice device) -> Swap_Chain_Support_Details;
     auto is_device_suitable(VkPhysicalDevice device) -> bool;
     auto find_memory_type(uint32_t type_filter, VkMemoryPropertyFlags properties) -> uint32_t;
+    auto find_support_format(std::vector<VkFormat>* candidates, VkImageTiling tiling, VkFormatFeatureFlags features) -> VkFormat;
 
     auto choose_swap_surface_format(std::vector<VkSurfaceFormatKHR> const& available_formats) -> VkSurfaceFormatKHR;
     auto choose_swap_present_mode(std::vector<VkPresentModeKHR> const& available_present_modes) -> VkPresentModeKHR;

@@ -65,6 +65,7 @@ target_link_libraries(${TARGET_NAME} PUBLIC fastgltf)
 target_link_libraries(${TARGET_NAME} PUBLIC lua_static sol2)
 target_link_libraries(${TARGET_NAME} PUBLIC ${vulkan_lib})
 target_link_libraries(${TARGET_NAME} PRIVATE $<BUILD_INTERFACE:json11>)
+target_link_libraries(${TARGET_NAME} PUBLIC assimp)
 
 target_include_directories(
   ${TARGET_NAME}

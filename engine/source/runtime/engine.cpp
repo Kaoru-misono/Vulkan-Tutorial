@@ -1,6 +1,7 @@
 #include "engine.hpp"
 #include "triangle_vert.h"
 #include "triangle_frag.h"
+#include "loader.hpp"
 
 #define GLM_FORCE_RADIANS
 #define GLM_FORCE_DEPTH_ZERO_TO_ONE
@@ -124,6 +125,8 @@ auto Hello_Triangle_Application::run() -> void
 {
     init_window();
     init_vulkan();
+    auto model_path = asset_dir + "Alisya/Alysia.fbx";
+    Assimp_Model alisya = load_model(model_path);
 
     main_loop();
 

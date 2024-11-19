@@ -86,6 +86,8 @@ private:
     VkDeviceMemory depth_image_memory{};
     VkImageView depth_image_view{};
 
+    uint32_t texture_mip_levels{};
+
     Assimp_Model model{};
     std::vector<Vertex> model_vertices{};
     std::vector<uint32_t> model_indices{};
@@ -165,13 +167,14 @@ private:
     auto copy_buffer(VkBuffer src_buffer, VkBuffer dst_buffer, VkDeviceSize size) -> void;
     auto copy_buffer_to_image(VkBuffer buffer, VkImage image, uint32_t width, uint32_t height) -> void;
     auto update_uniform_buffer(uint32_t current_image) -> void;
-    auto create_image(uint32_t width, uint32_t height, VkFormat format, VkImageTiling tiling, VkImageUsageFlags usage, VkMemoryPropertyFlags properties, VkImage* image, VkDeviceMemory* image_memory) -> void;
-    auto create_image_view(VkImage image, VkFormat format, VkImageAspectFlags aspect_flags) -> VkImageView;
+    auto create_image(uint32_t width, uint32_t height, uint32_t mip_levels, VkFormat format, VkImageTiling tiling, VkImageUsageFlags usage, VkMemoryPropertyFlags properties, VkImage* image, VkDeviceMemory* image_memory) -> void;
+    auto create_image_view(VkImage image, VkFormat format, VkImageAspectFlags aspect_flags, uint32_t mip_levels) -> VkImageView;
     auto begin_single_time_commands() -> VkCommandBuffer;
     auto end_single_time_commands(VkCommandBuffer command_buffer) -> void;
-    auto transition_image_layout(VkImage image, VkFormat format, VkImageLayout old_layout, VkImageLayout new_layout) -> void;
+    auto transition_image_layout(VkImage image, VkFormat format, VkImageLayout old_layout, VkImageLayout new_layout, uint32_t mip_levels) -> void;
     auto find_depth_format() -> VkFormat;
     auto has_stencil_component(VkFormat format) -> bool;
+    auto generate_mipmaps(VkImage image, VkFormat image_format, int32_t tex_width, int32_t tex_height, uint32_t mip_levels) -> void;
 
     auto cleanup_swap_chain() -> void;
     auto recreate_swap_chain() -> void;

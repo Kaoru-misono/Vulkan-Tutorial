@@ -1,7 +1,6 @@
 #include "engine.hpp"
 #include "triangle_vert.h"
 #include "triangle_frag.h"
-#include "loader.hpp"
 
 #define GLM_FORCE_RADIANS
 #define GLM_FORCE_DEPTH_ZERO_TO_ONE
@@ -14,7 +13,6 @@
 #include <set>
 #include <limits>
 #include <algorithm>
-#include <array>
 #include <chrono>
 #include <filesystem>
 
@@ -41,59 +39,6 @@ inline namespace
             func(instance, debugMessenger, pAllocator);
         }
     }
-
-    struct Vertex final
-    {
-        glm::vec3 position{};
-        glm::vec3 color{};
-        glm::vec2 tex_coord{};
-
-        static auto get_binding_description() -> VkVertexInputBindingDescription
-        {
-            auto binding_description = VkVertexInputBindingDescription{};
-            binding_description.binding = 0;
-            binding_description.stride = sizeof(Vertex);
-            binding_description.inputRate = VK_VERTEX_INPUT_RATE_VERTEX;
-
-            return binding_description;
-        }
-
-        static auto get_attribute_descriptions() -> std::array<VkVertexInputAttributeDescription, 3>
-        {
-            auto attribute_descriptions = std::array<VkVertexInputAttributeDescription, 3>{};
-            attribute_descriptions[0].binding = 0;
-            attribute_descriptions[0].location = 0;
-            attribute_descriptions[0].format = VK_FORMAT_R32G32B32_SFLOAT;
-            attribute_descriptions[0].offset = offsetof(Vertex, position);
-            attribute_descriptions[1].binding = 0;
-            attribute_descriptions[1].location = 1;
-            attribute_descriptions[1].format = VK_FORMAT_R32G32B32_SFLOAT;
-            attribute_descriptions[1].offset = offsetof(Vertex, color);
-            attribute_descriptions[2].binding = 0;
-            attribute_descriptions[2].location = 2;
-            attribute_descriptions[2].format = VK_FORMAT_R32G32_SFLOAT;
-            attribute_descriptions[2].offset = offsetof(Vertex, tex_coord);
-
-            return attribute_descriptions;
-        }
-    };
-
-    auto vertices = std::vector<Vertex>{
-        {{-0.5f, -0.5f, 0.0f}, {1.0f, 0.0f, 0.0f}, {1.0f, 0.0f}},
-        {{ 0.5f, -0.5f, 0.0f}, {0.0f, 1.0f, 0.0f}, {0.0f, 0.0f}},
-        {{ 0.5f,  0.5f, 0.0f}, {0.0f, 0.0f, 1.0f}, {0.0f, 1.0f}},
-        {{-0.5f,  0.5f, 0.0f}, {1.0f, 1.0f, 1.0f}, {1.0f, 1.0f}},
-
-        {{-0.5f, -0.5f, -0.5f}, {1.0f, 0.0f, 0.0f}, {1.0f, 0.0f}},
-        {{ 0.5f, -0.5f, -0.5f}, {0.0f, 1.0f, 0.0f}, {0.0f, 0.0f}},
-        {{ 0.5f,  0.5f, -0.5f}, {0.0f, 0.0f, 1.0f}, {0.0f, 1.0f}},
-        {{-0.5f,  0.5f, -0.5f}, {1.0f, 1.0f, 1.0f}, {1.0f, 1.0f}},
-    };
-
-    auto indices = std::vector<uint16_t>{
-        0, 1, 2, 2, 3, 0,
-        4, 5, 6, 6, 7, 4,
-    };
 
     struct Uniform_Buffer_Object
     {
@@ -124,9 +69,8 @@ inline namespace
 auto Hello_Triangle_Application::run() -> void
 {
     init_window();
+
     init_vulkan();
-    auto model_path = asset_dir + "Alisya/Alysia.fbx";
-    Assimp_Model alisya = load_model(model_path);
 
     main_loop();
 
@@ -174,6 +118,8 @@ auto Hello_Triangle_Application::init_vulkan() -> void
 
     create_framebuffers();
 
+    load_models();
+
     create_texture_image();
 
     create_texture_image_view();
@@ -193,6 +139,34 @@ auto Hello_Triangle_Application::init_vulkan() -> void
     create_command_buffers();
 
     create_sync_objects();
+}
+
+auto Hello_Triangle_Application::load_models() -> void
+{
+    auto model_path = asset_dir + "viking_room.obj";
+    model = load_model(model_path);
+    auto& first_mesh = *model.meshes.begin();
+    auto& position = first_mesh.vertex_info.position;
+    auto& tex_coord = first_mesh.vertex_info.texcoord;
+    auto& color = first_mesh.vertex_info.color;
+    auto& indices = first_mesh.topology;
+    // for (auto& mesh: changli.meshes) {
+    //     for (auto& indice: mesh.topology) {
+    //         std::cout << "tri idx: " << indice.a << ", " << indice.b << ", " << indice.c << std::endl;
+    //     }
+    // }
+    for (auto triangle: indices) {
+        model_indices.emplace_back(triangle.a);
+        model_indices.emplace_back(triangle.b);
+        model_indices.emplace_back(triangle.c);
+    }
+
+    for (auto i = (size_t) 0; i < position.size(); i++) {
+        auto vertex = Vertex{};
+        vertex.position = position[i];
+        vertex.tex_coord = tex_coord[i];
+        model_vertices.emplace_back(vertex);
+    }
 }
 
 auto Hello_Triangle_Application::main_loop() -> void
@@ -227,8 +201,8 @@ auto Hello_Triangle_Application::clean_up() -> void
     vkDestroyBuffer(logical_device, vertex_buffer, nullptr);
 
     vkDestroySampler(logical_device, texture_sampler, nullptr);
-    vkDestroyImageView(logical_device, texture_image_view, nullptr);
 
+    vkDestroyImageView(logical_device, texture_image_view, nullptr);
     vkDestroyImage(logical_device, texture_image, nullptr);
     vkFreeMemory(logical_device, texture_image_memory, nullptr);
 
@@ -536,7 +510,6 @@ auto Hello_Triangle_Application::create_descriptor_set_layout() -> void
     if (result != VK_SUCCESS) {
         throw std::runtime_error("failed to create descriptor set layout");
     }
-
 }
 
 auto Hello_Triangle_Application::create_graphics_pipeline() -> void
@@ -604,7 +577,7 @@ auto Hello_Triangle_Application::create_graphics_pipeline() -> void
     rasterization_state_create_info.rasterizerDiscardEnable = VK_FALSE;
     rasterization_state_create_info.polygonMode = VK_POLYGON_MODE_FILL;
     rasterization_state_create_info.lineWidth = 1.0f;
-    rasterization_state_create_info.cullMode = VK_CULL_MODE_BACK_BIT;
+    rasterization_state_create_info.cullMode = VK_CULL_MODE_NONE;
     rasterization_state_create_info.frontFace = VK_FRONT_FACE_COUNTER_CLOCKWISE;
     rasterization_state_create_info.depthBiasEnable = VK_FALSE;
     rasterization_state_create_info.depthBiasConstantFactor = 0.0f;
@@ -752,7 +725,7 @@ auto Hello_Triangle_Application::create_texture_image() -> void
     auto texture_width = 0;
     auto texture_height = 0;
     auto texture_channels = 0;
-    auto texture_path = asset_dir + "texture/quad-donuts.png";
+    auto texture_path = asset_dir + "viking_room.png";
     auto pixels = stbi_load(texture_path.c_str(), &texture_width, &texture_height, &texture_channels, STBI_rgb_alpha);
     auto image_size = (VkDeviceSize) texture_width * texture_height * 4;
 
@@ -832,7 +805,7 @@ auto Hello_Triangle_Application::create_texture_sampler() -> void
 
 auto Hello_Triangle_Application::create_vertex_buffer() -> void
 {
-    auto buffer_size = sizeof(vertices[0]) * vertices.size();
+    auto buffer_size = sizeof(model_vertices[0]) * model_vertices.size();
 
     auto staging_buffer = VkBuffer{};
     auto staging_buffer_memory = VkDeviceMemory{};
@@ -846,7 +819,7 @@ auto Hello_Triangle_Application::create_vertex_buffer() -> void
 
     auto data = (void*) nullptr;
     vkMapMemory(logical_device, staging_buffer_memory, 0, buffer_size, 0, &data);
-    memcpy(data, vertices.data(), (size_t) buffer_size);
+    memcpy(data, model_vertices.data(), (size_t) buffer_size);
     vkUnmapMemory(logical_device, staging_buffer_memory);
 
     create_buffer(
@@ -864,7 +837,7 @@ auto Hello_Triangle_Application::create_vertex_buffer() -> void
 
 auto Hello_Triangle_Application::create_index_buffer() -> void
 {
-    auto buffer_size = sizeof(indices[0]) * indices.size();
+    auto buffer_size = sizeof(model_indices[0]) * model_indices.size();
 
     auto staging_buffer = VkBuffer{};
     auto staging_buffer_memory = VkDeviceMemory{};
@@ -878,7 +851,7 @@ auto Hello_Triangle_Application::create_index_buffer() -> void
 
     auto data = (void*) nullptr;
     vkMapMemory(logical_device, staging_buffer_memory, 0, buffer_size, 0, &data);
-    memcpy(data, indices.data(), (size_t) buffer_size);
+    memcpy(data, model_indices.data(), (size_t) buffer_size);
     vkUnmapMemory(logical_device, staging_buffer_memory);
 
     create_buffer(
@@ -1124,7 +1097,7 @@ auto Hello_Triangle_Application::record_command_buffer(VkCommandBuffer command_b
     render_pass_begin_info.renderArea.offset = {0, 0};
     render_pass_begin_info.renderArea.extent = swap_chain_extent;
     auto clear_color = std::array<VkClearValue, 2>{};
-    clear_color[0].color = {{0.0f, 0.0f, 0.0f, 1.0f}};
+    clear_color[0].color = {{0.7f, 0.2f, 0.5f, 1.0f}};
     clear_color[1].depthStencil = {1.0f, 0};
     render_pass_begin_info.clearValueCount = static_cast<uint32_t>(clear_color.size());
     render_pass_begin_info.pClearValues = clear_color.data();
@@ -1151,11 +1124,11 @@ auto Hello_Triangle_Application::record_command_buffer(VkCommandBuffer command_b
     auto offsets = std::vector<VkDeviceSize>{0};
     vkCmdBindVertexBuffers(command_buffer, 0, 1, vertex_buffers.data(), offsets.data());
 
-    vkCmdBindIndexBuffer(command_buffer, index_buffer, 0, VK_INDEX_TYPE_UINT16);
+    vkCmdBindIndexBuffer(command_buffer, index_buffer, 0, VK_INDEX_TYPE_UINT32);
 
     vkCmdBindDescriptorSets(command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline_layout, 0, 1, &descriptor_sets[current_frame], 0, nullptr);
 
-    vkCmdDrawIndexed(command_buffer, static_cast<uint32_t>(indices.size()), 1, 0, 0, 0);
+    vkCmdDrawIndexed(command_buffer, static_cast<uint32_t>(model_indices.size()), 1, 0, 0, 0);
 
     vkCmdEndRenderPass(command_buffer);
 

@@ -63,9 +63,12 @@ auto load_model(std::string path) -> Assimp_Model
     using Array_Index = Assimp_Model::Array_Index;
     using Node_Address_To_Index = std::unordered_map<std::string, Array_Index>;
 
+    std::cout << "Loading model..." << std::endl;
+
     Assimp::Importer importer;
     //TODO: set postprocessing step
-    auto scene = importer.ReadFile(path, aiProcess_Triangulate | aiProcess_GenSmoothNormals | aiProcess_FlipUVs | aiProcess_CalcTangentSpace);
+    auto post_process = aiProcess_Triangulate | aiProcess_GenSmoothNormals | aiProcess_FlipUVs | aiProcess_CalcTangentSpace;
+    auto scene = importer.ReadFile(path, aiProcess_FlipUVs);
 
     if (!scene || scene->mFlags & AI_SCENE_FLAGS_INCOMPLETE || !scene->mRootNode)
     {
@@ -132,10 +135,8 @@ auto load_model(std::string path) -> Assimp_Model
 
                 for (auto i = 0; i < mat->GetTextureCount(assimp_tex_type); i++) {
                     aiString path;
-                    if (mat->GetTexture(assimp_tex_type, 0, &path) != ::aiReturn_SUCCESS)
-                        continue;
-                    if (path.C_Str()[0] == '\0')    // skip empty path
-                        continue;
+                    if (mat->GetTexture(assimp_tex_type, 0, &path) != ::aiReturn_SUCCESS) continue;
+                    if (path.C_Str()[0] == '\0') continue;
 
                     auto texture_path = std::string{path.C_Str()};
                     replace(texture_path.begin(), texture_path.end(), '\\', '/');
@@ -147,7 +148,6 @@ auto load_model(std::string path) -> Assimp_Model
                     result.material_textures.emplace(tex_type, texture_path);
                 }
             }
-
             model.materials.emplace_back(std::move(result));
         }
     };
@@ -255,13 +255,15 @@ auto load_model(std::string path) -> Assimp_Model
 
     Assimp_Model result;
     {
+        std::cout << "Loading materials..." << std::endl;
         load_materials(result);
+        std::cout << result.materials.size() << " materials have been loaded." << std::endl;
+        std::cout << "Loading meshes..." << std::endl;
         load_meshes(result);
-
+        std::cout << result.meshes.size() << " meshes have been loaded." << std::endl;
         //for bones and animation
         auto node_addr_to_idx = load_hierarchy(result);
     }
     //std::cout << "Model_Info: mesh[" << result.meshes.size() << "], node[" << result.nodes.size() << "], material[" << result.materials.size() << "], texture[" << result.textures.size() << "]" << std::endl;;
-
     return result;
 }

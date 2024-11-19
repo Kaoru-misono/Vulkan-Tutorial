@@ -1,8 +1,11 @@
 #pragma once
+#include "loader.hpp"
+
 #define GLFW_INCLUDE_VULKAN
 #include <GLFW/glfw3.h>
 
 #include <iostream>
+#include <array>
 #include <vector>
 #include <optional>
 #include <stdexcept>
@@ -16,6 +19,42 @@ const int MAX_FRAMES_IN_FLIGHT = 2;
 
 const std::vector<const char*> validation_layers = {"VK_LAYER_KHRONOS_validation"};
 const std::vector<const char*> device_extensions = {VK_KHR_SWAPCHAIN_EXTENSION_NAME};
+
+struct Vertex final
+{
+    glm::vec3 position{};
+    glm::vec4 color{};
+    glm::vec2 tex_coord{};
+
+    static auto get_binding_description() -> VkVertexInputBindingDescription
+    {
+        auto binding_description = VkVertexInputBindingDescription{};
+        binding_description.binding = 0;
+        binding_description.stride = sizeof(Vertex);
+        binding_description.inputRate = VK_VERTEX_INPUT_RATE_VERTEX;
+
+        return binding_description;
+    }
+
+    static auto get_attribute_descriptions() -> std::array<VkVertexInputAttributeDescription, 3>
+    {
+        auto attribute_descriptions = std::array<VkVertexInputAttributeDescription, 3>{};
+        attribute_descriptions[0].binding = 0;
+        attribute_descriptions[0].location = 0;
+        attribute_descriptions[0].format = VK_FORMAT_R32G32B32_SFLOAT;
+        attribute_descriptions[0].offset = offsetof(Vertex, position);
+        attribute_descriptions[1].binding = 0;
+        attribute_descriptions[1].location = 1;
+        attribute_descriptions[1].format = VK_FORMAT_R32G32B32A32_SFLOAT;
+        attribute_descriptions[1].offset = offsetof(Vertex, color);
+        attribute_descriptions[2].binding = 0;
+        attribute_descriptions[2].location = 2;
+        attribute_descriptions[2].format = VK_FORMAT_R32G32_SFLOAT;
+        attribute_descriptions[2].offset = offsetof(Vertex, tex_coord);
+
+        return attribute_descriptions;
+    }
+};
 
 struct Hello_Triangle_Application final
 {
@@ -39,23 +78,25 @@ private:
     VkCommandPool command_pool{};
     std::vector<VkCommandBuffer> command_buffers{};
 
-    VkBuffer vertex_buffer{};
-    VkDeviceMemory vertex_buffer_memory{};
-    VkBuffer index_buffer{};
-    VkDeviceMemory index_buffer_memory{};
-
     std::vector<VkBuffer> uniform_buffers{};
     std::vector<VkDeviceMemory> uniform_buffers_memory{};
     std::vector<void*> uniform_buffers_mapped{};
 
+    VkImage depth_image{};
+    VkDeviceMemory depth_image_memory{};
+    VkImageView depth_image_view{};
+
+    Assimp_Model model{};
+    std::vector<Vertex> model_vertices{};
+    std::vector<uint32_t> model_indices{};
+    VkBuffer vertex_buffer{};
+    VkDeviceMemory vertex_buffer_memory{};
+    VkBuffer index_buffer{};
+    VkDeviceMemory index_buffer_memory{};
     VkImage texture_image{};
     VkDeviceMemory texture_image_memory{};
     VkImageView texture_image_view{};
     VkSampler texture_sampler{};
-
-    VkImage depth_image{};
-    VkDeviceMemory depth_image_memory{};
-    VkImageView depth_image_view{};
 
     VkInstance instance{};
     VkPhysicalDevice physical_device{VK_NULL_HANDLE};
@@ -107,6 +148,7 @@ private:
     auto create_texture_image() -> void;
     auto create_texture_image_view() -> void;
     auto create_texture_sampler() -> void;
+    auto load_models() -> void;
     auto create_vertex_buffer() -> void;
     auto create_index_buffer() -> void;
     auto create_uniform_buffers() -> void;

@@ -85,8 +85,12 @@ private:
     VkImage depth_image{};
     VkDeviceMemory depth_image_memory{};
     VkImageView depth_image_view{};
+    VkImage color_image{};
+    VkDeviceMemory color_image_memory{};
+    VkImageView color_image_view{};
 
     uint32_t texture_mip_levels{};
+    VkSampleCountFlagBits msaa_samples = VK_SAMPLE_COUNT_1_BIT;
 
     Assimp_Model model{};
     std::vector<Vertex> model_vertices{};
@@ -146,6 +150,7 @@ private:
     auto create_graphics_pipeline() -> void;
     auto create_framebuffers() -> void;
     auto create_command_pool() -> void;
+    auto create_color_resources() -> void;
     auto create_depth_resources() -> void;
     auto create_texture_image() -> void;
     auto create_texture_image_view() -> void;
@@ -167,7 +172,7 @@ private:
     auto copy_buffer(VkBuffer src_buffer, VkBuffer dst_buffer, VkDeviceSize size) -> void;
     auto copy_buffer_to_image(VkBuffer buffer, VkImage image, uint32_t width, uint32_t height) -> void;
     auto update_uniform_buffer(uint32_t current_image) -> void;
-    auto create_image(uint32_t width, uint32_t height, uint32_t mip_levels, VkFormat format, VkImageTiling tiling, VkImageUsageFlags usage, VkMemoryPropertyFlags properties, VkImage* image, VkDeviceMemory* image_memory) -> void;
+    auto create_image(uint32_t width, uint32_t height, uint32_t mip_levels, VkSampleCountFlagBits num_samples, VkFormat format, VkImageTiling tiling, VkImageUsageFlags usage, VkMemoryPropertyFlags properties, VkImage* image, VkDeviceMemory* image_memory) -> void;
     auto create_image_view(VkImage image, VkFormat format, VkImageAspectFlags aspect_flags, uint32_t mip_levels) -> VkImageView;
     auto begin_single_time_commands() -> VkCommandBuffer;
     auto end_single_time_commands(VkCommandBuffer command_buffer) -> void;
@@ -185,6 +190,7 @@ private:
     auto is_device_suitable(VkPhysicalDevice device) -> bool;
     auto find_memory_type(uint32_t type_filter, VkMemoryPropertyFlags properties) -> uint32_t;
     auto find_support_format(std::vector<VkFormat>* candidates, VkImageTiling tiling, VkFormatFeatureFlags features) -> VkFormat;
+    auto get_max_useable_sample_count() -> VkSampleCountFlagBits;
 
     auto choose_swap_surface_format(std::vector<VkSurfaceFormatKHR> const& available_formats) -> VkSurfaceFormatKHR;
     auto choose_swap_present_mode(std::vector<VkPresentModeKHR> const& available_present_modes) -> VkPresentModeKHR;

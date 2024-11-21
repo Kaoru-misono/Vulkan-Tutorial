@@ -12,7 +12,7 @@
 #include <cstdlib>
 #include <cstring>
 
-const uint32_t WINTH = 800;
+const uint32_t WIDTH = 800;
 const uint32_t HEIGHT = 600;
 
 const int MAX_FRAMES_IN_FLIGHT = 2;
@@ -73,14 +73,24 @@ private:
     VkDescriptorPool descriptor_pool{};
     VkDescriptorSetLayout descriptor_set_layout{};
     std::vector<VkDescriptorSet> descriptor_sets{};
+    VkDescriptorPool compute_descriptor_pool{};
+    VkDescriptorSetLayout compute_descriptor_set_layout{};
+    std::vector<VkDescriptorSet> compute_descriptor_sets{};
     VkPipelineLayout pipeline_layout{};
     VkPipeline graphics_pipeline{};
+    VkPipelineLayout pipeline_layout2{};
+    VkPipeline graphics_pipeline2{};
+    VkPipelineLayout compute_pipeline_layout{};
+    VkPipeline compute_pipeline{};
     VkCommandPool command_pool{};
     std::vector<VkCommandBuffer> command_buffers{};
+    std::vector<VkCommandBuffer> compute_command_buffers{};
 
     std::vector<VkBuffer> uniform_buffers{};
     std::vector<VkDeviceMemory> uniform_buffers_memory{};
     std::vector<void*> uniform_buffers_mapped{};
+    std::vector<VkBuffer> shader_storage_buffers{};
+    std::vector<VkDeviceMemory> shader_storage_buffers_memory{};
 
     VkImage depth_image{};
     VkDeviceMemory depth_image_memory{};
@@ -108,12 +118,15 @@ private:
     VkPhysicalDevice physical_device{VK_NULL_HANDLE};
     VkDevice logical_device{};
     VkQueue graphics_queue{};
+    VkQueue compute_queue{};
     VkQueue present_queue{};
     VkDebugUtilsMessengerEXT debug_messenger{};
 
     std::vector<VkSemaphore> image_available_semaphores{};
     std::vector<VkSemaphore> render_finished_semaphores{};
     std::vector<VkFence> in_flight_fences{};
+    std::vector<VkFence> compute_in_flight_fences{};
+    std::vector<VkSemaphore> compute_finished_semaphores{};
     uint32_t current_frame{0};
     bool frame_buffer_resized{false};
 
@@ -147,7 +160,10 @@ private:
     auto create_image_views() -> void;
     auto create_render_pass() -> void;
     auto create_descriptor_set_layout() -> void;
+    auto create_compute_descriptor_set_layout() -> void;
     auto create_graphics_pipeline() -> void;
+    auto create_graphics_pipeline2() -> void;
+    auto create_compute_pipeline() -> void;
     auto create_framebuffers() -> void;
     auto create_command_pool() -> void;
     auto create_color_resources() -> void;
@@ -159,15 +175,20 @@ private:
     auto create_vertex_buffer() -> void;
     auto create_index_buffer() -> void;
     auto create_uniform_buffers() -> void;
+    auto create_shader_storage_buffers() -> void;
     auto create_descriptor_pool() -> void;
+    auto create_compute_descriptor_pool() -> void;
     auto create_descriptor_sets() -> void;
+    auto create_compute_descriptor_sets() -> void;
     auto create_command_buffers() -> void;
+    auto create_compute_command_buffers() -> void;
     auto create_sync_objects() -> void;
 
     auto draw_frame() -> void;
 
     auto create_shader_module(std::vector<unsigned char> const& code) -> VkShaderModule;
     auto record_command_buffer(VkCommandBuffer command_buffer, uint32_t image_index) -> void;
+    auto record_compute_command_buffer(VkCommandBuffer command_buffer) -> void;
     auto create_buffer(VkDeviceSize size, VkBufferUsageFlags usage, VkMemoryPropertyFlags properties, VkBuffer* buffer, VkDeviceMemory* buffer_memory) -> void;
     auto copy_buffer(VkBuffer src_buffer, VkBuffer dst_buffer, VkDeviceSize size) -> void;
     auto copy_buffer_to_image(VkBuffer buffer, VkImage image, uint32_t width, uint32_t height) -> void;
